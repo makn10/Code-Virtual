@@ -185,7 +185,7 @@ jobs:
 
           RELEASE_TAG="debug-apk-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
           RELEASE_TITLE="Debug APK Build #${GITHUB_RUN_NUMBER}"
-          NOTES_FILE="$(mktemp "${RUNNER_TEMP}/release-notes-XXXXXX.md")"
+          NOTES_FILE="$(mktemp --suffix=.md "${RUNNER_TEMP}/release-notes-XXXXXX")"
 
           {
             printf '%s\n' "Automatically generated debug APK built by GitHub Actions."
