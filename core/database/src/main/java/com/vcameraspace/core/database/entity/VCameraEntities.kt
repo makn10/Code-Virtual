@@ -215,3 +215,49 @@ data class AppUsageEntity(
     @ColumnInfo(name = "total_foreground_ms")
     val totalForegroundMs: Long
 )
+
+@Entity(
+    tableName = "imported_apks",
+    indices = [
+        Index(value = ["package_name"]),
+        Index(value = ["imported_at_epoch_ms"])
+    ]
+)
+data class ImportedApkEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    @ColumnInfo(name = "package_name")
+    val packageName: String,
+    @ColumnInfo(name = "app_label")
+    val appLabel: String,
+    @ColumnInfo(name = "version_name")
+    val versionName: String,
+    @ColumnInfo(name = "version_code")
+    val versionCode: Long,
+    @ColumnInfo(name = "min_sdk")
+    val minSdk: Int,
+    @ColumnInfo(name = "target_sdk")
+    val targetSdk: Int,
+    @ColumnInfo(name = "signing_sha256")
+    val signingSha256: String,
+    @ColumnInfo(name = "abis_csv")
+    val abisCsv: String,
+    @ColumnInfo(name = "apk_file_path")
+    val apkFilePath: String,
+    @ColumnInfo(name = "icon_file_path")
+    val iconFilePath: String?,
+    @ColumnInfo(name = "file_size_bytes")
+    val fileSizeBytes: Long,
+    @ColumnInfo(name = "is_valid_archive")
+    val isValidArchive: Boolean,
+    @ColumnInfo(name = "is_compatible")
+    val isCompatible: Boolean,
+    @ColumnInfo(name = "compatibility_summary")
+    val compatibilitySummary: String,
+    @ColumnInfo(name = "imported_at_epoch_ms")
+    val importedAtEpochMs: Long
+)
+

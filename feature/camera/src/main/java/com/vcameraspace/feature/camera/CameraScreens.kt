@@ -68,6 +68,8 @@ fun VirtualCameraSettingScreen(
     onBackClick: () -> Unit,
     onOpenPreview: () -> Unit,
     onOpenCameraLab: () -> Unit,
+    onOpenPhotoSourceSelect: (() -> Unit)? = null,
+    onOpenVideoSourceSelect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -372,6 +374,29 @@ fun VirtualCameraSettingScreen(
                         Icon(Icons.Default.Science, contentDescription = null)
                         Spacer(modifier = Modifier.padding(4.dp))
                         Text("Camera Lab")
+                    }
+                }
+            }
+
+            if (onOpenPhotoSourceSelect != null && onOpenVideoSourceSelect != null) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = onOpenPhotoSourceSelect,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("open_photo_source_button")
+                        ) {
+                            Text("Photo Pipeline")
+                        }
+                        OutlinedButton(
+                            onClick = onOpenVideoSourceSelect,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("open_video_source_button")
+                        ) {
+                            Text("Video Codec")
+                        }
                     }
                 }
             }

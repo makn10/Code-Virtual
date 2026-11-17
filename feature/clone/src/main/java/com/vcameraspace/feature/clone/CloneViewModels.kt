@@ -20,6 +20,7 @@ import com.vcameraspace.virtualengine.api.VirtualPackageManager
 import com.vcameraspace.virtualengine.api.VirtualProcessManager
 import com.vcameraspace.virtualengine.api.VirtualStorageManager
 import com.vcameraspace.virtualengine.impl.AndroidCompatibilityChecker
+import com.vcameraspace.virtualengine.impl.ApkImportManager
 import com.vcameraspace.virtualengine.impl.ApkInspectionResult
 import com.vcameraspace.virtualengine.impl.InstalledAppCandidate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -139,7 +140,8 @@ class ApkImportViewModel(
     private val spaceId: String,
     private val compatibilityChecker: AndroidCompatibilityChecker,
     private val appInstaller: VirtualAppInstaller,
-    private val dispatchers: DispatcherProvider
+    private val dispatchers: DispatcherProvider,
+    private val apkImportManager: ApkImportManager? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ApkImportUiState(spaceId = spaceId))
@@ -161,6 +163,7 @@ class ApkImportViewModel(
             }
             when (result) {
                 is AppResult.Success -> {
+                    apkImportManager?.importApkFromUri(uri)
                     _uiState.update {
                         it.copy(isInspecting = false, inspection = result.data)
                     }
@@ -202,11 +205,18 @@ class ApkImportViewModel(
             spaceId: String,
             compatibilityChecker: AndroidCompatibilityChecker,
             appInstaller: VirtualAppInstaller,
-            dispatchers: DispatcherProvider
+            dispatchers: DispatcherProvider,
+            apkImportManager: ApkImportManager? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ApkImportViewModel(spaceId, compatibilityChecker, appInstaller, dispatchers) as T
+                return ApkImportViewModel(
+                    spaceId = spaceId,
+                    compatibilityChecker = compatibilityChecker,
+                    appInstaller = appInstaller,
+                    dispatchers = dispatchers,
+                    apkImportManager = apkImportManager
+                ) as T
             }
         }
     }

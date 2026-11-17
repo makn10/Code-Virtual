@@ -83,4 +83,29 @@ sealed interface VCameraDestination {
 
     @Serializable
     data object About : VCameraDestination
+
+    @Serializable
+    data object ImportedApps : VCameraDestination
+
+    @Serializable
+    data object VirtualApps : VCameraDestination
+
+    @Serializable
+    data object CompatibilityStatus : VCameraDestination
+
+    @Serializable
+    data class PhotoSourceSelect(
+        val spaceId: String = "space_1",
+        val packageName: String? = null
+    ) : VCameraDestination
+
+    @Serializable
+    data class VideoSourceSelect(
+        val spaceId: String = "space_1",
+        val packageName: String? = null
+    ) : VCameraDestination
+
+    @Serializable
+    data object DiagnosticLogs : VCameraDestination
 }
+

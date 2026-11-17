@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.vcameraspace.core.database.entity.AppUsageEntity
 import com.vcameraspace.core.database.entity.CameraConfigEntity
+import com.vcameraspace.core.database.entity.ImportedApkEntity
 import com.vcameraspace.core.database.entity.InstallationEntity
 import com.vcameraspace.core.database.entity.LocationConfigEntity
 import com.vcameraspace.core.database.entity.SpaceEntity
@@ -135,3 +136,22 @@ interface AppUsageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertUsage(usage: AppUsageEntity)
 }
+
+@Dao
+interface ImportedApkDao {
+    @Query("SELECT * FROM imported_apks ORDER BY imported_at_epoch_ms DESC")
+    fun observeAllImportedApks(): Flow<List<ImportedApkEntity>>
+
+    @Query("SELECT * FROM imported_apks ORDER BY imported_at_epoch_ms DESC")
+    suspend fun getAllImportedApksOnce(): List<ImportedApkEntity>
+
+    @Query("SELECT * FROM imported_apks WHERE id = :id LIMIT 1")
+    suspend fun getImportedApkById(id: String): ImportedApkEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertImportedApk(entity: ImportedApkEntity)
+
+    @Query("DELETE FROM imported_apks WHERE id = :id")
+    suspend fun deleteImportedApk(id: String)
+}
+

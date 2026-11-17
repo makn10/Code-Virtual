@@ -39,6 +39,10 @@ fun GeneralSettingsScreen(
     onOpenPerformanceMonitor: () -> Unit,
     onOpenBackupRestore: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenImportedApps: (() -> Unit)? = null,
+    onOpenVirtualApps: (() -> Unit)? = null,
+    onOpenCompatibilityStatus: (() -> Unit)? = null,
+    onOpenDiagnosticLogs: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val prefs by userPreferencesRepository.userPreferences
@@ -127,6 +131,34 @@ fun GeneralSettingsScreen(
                 )
             }
 
+            if (onOpenImportedApps != null) {
+                item {
+                    OutlinedButton(onClick = onOpenImportedApps, modifier = Modifier.fillMaxWidth()) {
+                        Text("Imported Applications (APK Vault)")
+                    }
+                }
+            }
+            if (onOpenVirtualApps != null) {
+                item {
+                    OutlinedButton(onClick = onOpenVirtualApps, modifier = Modifier.fillMaxWidth()) {
+                        Text("Virtual Applications Manager")
+                    }
+                }
+            }
+            if (onOpenCompatibilityStatus != null) {
+                item {
+                    OutlinedButton(onClick = onOpenCompatibilityStatus, modifier = Modifier.fillMaxWidth()) {
+                        Text("Compatibility Status (WhatsApp / Messenger / imo)")
+                    }
+                }
+            }
+            if (onOpenDiagnosticLogs != null) {
+                item {
+                    OutlinedButton(onClick = onOpenDiagnosticLogs, modifier = Modifier.fillMaxWidth()) {
+                        Text("Diagnostic Logs & Crash Reporter")
+                    }
+                }
+            }
             item {
                 OutlinedButton(onClick = onOpenSpaceManager, modifier = Modifier.fillMaxWidth()) {
                     Text("Space Manager")
@@ -139,7 +171,7 @@ fun GeneralSettingsScreen(
             }
             item {
                 OutlinedButton(onClick = onOpenPerformanceMonitor, modifier = Modifier.fillMaxWidth()) {
-                    Text("Performance Monitor")
+                    Text("Runtime Status & Performance")
                 }
             }
             item {
@@ -155,3 +187,4 @@ fun GeneralSettingsScreen(
         }
     }
 }
+

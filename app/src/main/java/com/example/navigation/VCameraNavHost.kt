@@ -35,6 +35,8 @@ import com.vcameraspace.feature.backup.BackupRestoreViewModel
 import com.vcameraspace.feature.camera.CameraLabScreen
 import com.vcameraspace.feature.camera.CameraPreviewScreen
 import com.vcameraspace.feature.camera.CameraViewModel
+import com.vcameraspace.feature.camera.PhotoSourceScreen
+import com.vcameraspace.feature.camera.VideoSourceScreen
 import com.vcameraspace.feature.camera.VirtualCameraSettingScreen
 import com.vcameraspace.feature.clone.ApkImportScreen
 import com.vcameraspace.feature.clone.ApkImportViewModel
@@ -42,14 +44,21 @@ import com.vcameraspace.feature.clone.AppInformationScreen
 import com.vcameraspace.feature.clone.AppInformationViewModel
 import com.vcameraspace.feature.clone.CloneAppScreen
 import com.vcameraspace.feature.clone.CloneAppViewModel
+import com.vcameraspace.feature.clone.ImportedAppsScreen
+import com.vcameraspace.feature.clone.ImportedAppsViewModel
 import com.vcameraspace.feature.clone.InstallationProgressScreen
 import com.vcameraspace.feature.clone.InstallationProgressViewModel
+import com.vcameraspace.feature.clone.VirtualAppsScreen
+import com.vcameraspace.feature.clone.VirtualAppsViewModel
 import com.vcameraspace.feature.googleframework.GoogleFrameworkScreen
 import com.vcameraspace.feature.home.HomeOverflowAction
+import com.vcameraspace.feature.home.HomeQuickDestination
 import com.vcameraspace.feature.home.HomeScreen
 import com.vcameraspace.feature.home.HomeViewModel
 import com.vcameraspace.feature.onboarding.OnboardingScreen
 import com.vcameraspace.feature.onboarding.OnboardingViewModel
+import com.vcameraspace.feature.performance.CompatibilityStatusScreen
+import com.vcameraspace.feature.performance.DiagnosticLogsScreen
 import com.vcameraspace.feature.performance.PerformanceMonitorScreen
 import com.vcameraspace.feature.premium.PremiumScreen
 import com.vcameraspace.feature.privacy.PrivacyDashboardScreen
@@ -158,6 +167,25 @@ fun VCameraNavHost(
                 },
                 onOpenAppCameraSettings = { spaceId, packageName ->
                     navController.navigate(VCameraDestination.VirtualCameraSetting(spaceId, packageName))
+                },
+                onOpenQuickDestination = { destination, spaceId ->
+                    when (destination) {
+                        HomeQuickDestination.IMPORTED_APKS -> navController.navigate(VCameraDestination.ImportedApps)
+                        HomeQuickDestination.VIRTUAL_APPS -> navController.navigate(VCameraDestination.VirtualApps)
+                        HomeQuickDestination.VIRTUAL_CAMERA -> navController.navigate(
+                            VCameraDestination.VirtualCameraSetting(spaceId = spaceId)
+                        )
+                        HomeQuickDestination.PHOTO_SOURCE -> navController.navigate(
+                            VCameraDestination.PhotoSourceSelect(spaceId = spaceId)
+                        )
+                        HomeQuickDestination.VIDEO_SOURCE -> navController.navigate(
+                            VCameraDestination.VideoSourceSelect(spaceId = spaceId)
+                        )
+                        HomeQuickDestination.COMPATIBILITY -> navController.navigate(VCameraDestination.CompatibilityStatus)
+                        HomeQuickDestination.RUNTIME_STATUS -> navController.navigate(VCameraDestination.PerformanceMonitor)
+                        HomeQuickDestination.DIAGNOSTIC_LOGS -> navController.navigate(VCameraDestination.DiagnosticLogs)
+                        HomeQuickDestination.SETTINGS -> navController.navigate(VCameraDestination.GeneralSettings)
+                    }
                 }
             )
         }
@@ -210,7 +238,8 @@ fun VCameraNavHost(
                     spaceId = route.spaceId,
                     compatibilityChecker = appContainer.compatibilityChecker,
                     appInstaller = appContainer.appInstaller,
-                    dispatchers = appContainer.dispatchers
+                    dispatchers = appContainer.dispatchers,
+                    apkImportManager = appContainer.apkImportManager
                 )
             )
             ApkImportScreen(
@@ -218,6 +247,54 @@ fun VCameraNavHost(
                 onBackClick = { navController.popBackStack() },
                 onDoneNavigateHome = {
                     navController.popBackStack(VCameraDestination.Home, inclusive = false)
+                },
+                onOpenImportedApps = {
+                    navController.navigate(VCameraDestination.ImportedApps)
+                }
+            )
+        }
+
+        composable<VCameraDestination.ImportedApps> {
+            val importedAppsViewModel: ImportedAppsViewModel = viewModel(
+                factory = ImportedAppsViewModel.factory(
+                    apkImportManager = appContainer.apkImportManager,
+                    spaceRepository = appContainer.spaceRepository,
+                    appInstaller = appContainer.appInstaller,
+                    compatibilityChecker = appContainer.compatibilityChecker,
+                    logger = appContainer.diagnosticLogger
+                )
+            )
+            ImportedAppsScreen(
+                viewModel = importedAppsViewModel,
+                onBackClick = { navController.popBackStack() },
+                onOpenVirtualApps = {
+                    navController.navigate(VCameraDestination.VirtualApps)
+                }
+            )
+        }
+
+        composable<VCameraDestination.VirtualApps> {
+            val virtualAppsViewModel: VirtualAppsViewModel = viewModel(
+                factory = VirtualAppsViewModel.factory(
+                    spaceRepository = appContainer.spaceRepository,
+                    virtualPackageManager = appContainer.virtualPackageManager,
+                    processManager = appContainer.processManager,
+                    storageManager = appContainer.storageManager,
+                    cameraAdapterManager = appContainer.virtualCameraAdapterManager,
+                    logger = appContainer.diagnosticLogger
+                )
+            )
+            VirtualAppsScreen(
+                viewModel = virtualAppsViewModel,
+                onBackClick = { navController.popBackStack() },
+                onOpenCloneApp = { spaceId ->
+                    navController.navigate(VCameraDestination.CloneApp(spaceId))
+                },
+                onOpenAppInfo = { spaceId, pkg ->
+                    navController.navigate(VCameraDestination.AppInformation(spaceId, pkg))
+                },
+                onOpenAppCameraSettings = { spaceId, pkg ->
+                    navController.navigate(VCameraDestination.VirtualCameraSetting(spaceId, pkg))
                 }
             )
         }
@@ -274,7 +351,8 @@ fun VCameraNavHost(
                     packageName = route.packageName,
                     configRepository = appContainer.cameraConfigRepository,
                     mediaInspector = appContainer.mediaInspector,
-                    dispatchers = appContainer.dispatchers
+                    dispatchers = appContainer.dispatchers,
+                    adapterManager = appContainer.virtualCameraAdapterManager
                 )
             )
             VirtualCameraSettingScreen(
@@ -295,7 +373,61 @@ fun VCameraNavHost(
                             packageName = route.packageName
                         )
                     )
+                },
+                onOpenPhotoSourceSelect = {
+                    navController.navigate(
+                        VCameraDestination.PhotoSourceSelect(
+                            spaceId = route.spaceId,
+                            packageName = route.packageName
+                        )
+                    )
+                },
+                onOpenVideoSourceSelect = {
+                    navController.navigate(
+                        VCameraDestination.VideoSourceSelect(
+                            spaceId = route.spaceId,
+                            packageName = route.packageName
+                        )
+                    )
                 }
+            )
+        }
+
+        composable<VCameraDestination.PhotoSourceSelect> { backStackEntry ->
+            val route = backStackEntry.toRoute<VCameraDestination.PhotoSourceSelect>()
+            val cameraViewModel: CameraViewModel = viewModel(
+                factory = CameraViewModel.factory(
+                    spaceId = route.spaceId,
+                    packageName = route.packageName,
+                    configRepository = appContainer.cameraConfigRepository,
+                    mediaInspector = appContainer.mediaInspector,
+                    dispatchers = appContainer.dispatchers,
+                    adapterManager = appContainer.virtualCameraAdapterManager
+                )
+            )
+            PhotoSourceScreen(
+                viewModel = cameraViewModel,
+                adapterManager = appContainer.virtualCameraAdapterManager,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable<VCameraDestination.VideoSourceSelect> { backStackEntry ->
+            val route = backStackEntry.toRoute<VCameraDestination.VideoSourceSelect>()
+            val cameraViewModel: CameraViewModel = viewModel(
+                factory = CameraViewModel.factory(
+                    spaceId = route.spaceId,
+                    packageName = route.packageName,
+                    configRepository = appContainer.cameraConfigRepository,
+                    mediaInspector = appContainer.mediaInspector,
+                    dispatchers = appContainer.dispatchers,
+                    adapterManager = appContainer.virtualCameraAdapterManager
+                )
+            )
+            VideoSourceScreen(
+                viewModel = cameraViewModel,
+                adapterManager = appContainer.virtualCameraAdapterManager,
+                onBackClick = { navController.popBackStack() }
             )
         }
 
@@ -307,7 +439,8 @@ fun VCameraNavHost(
                     packageName = route.packageName,
                     configRepository = appContainer.cameraConfigRepository,
                     mediaInspector = appContainer.mediaInspector,
-                    dispatchers = appContainer.dispatchers
+                    dispatchers = appContainer.dispatchers,
+                    adapterManager = appContainer.virtualCameraAdapterManager
                 )
             )
             CameraPreviewScreen(
@@ -332,7 +465,8 @@ fun VCameraNavHost(
                     packageName = route.packageName,
                     configRepository = appContainer.cameraConfigRepository,
                     mediaInspector = appContainer.mediaInspector,
-                    dispatchers = appContainer.dispatchers
+                    dispatchers = appContainer.dispatchers,
+                    adapterManager = appContainer.virtualCameraAdapterManager
                 )
             )
             CameraLabScreen(
@@ -437,6 +571,23 @@ fun VCameraNavHost(
                 spaceRepository = appContainer.spaceRepository,
                 processManager = appContainer.processManager,
                 virtualEngine = appContainer.virtualEngine,
+                cameraAdapterManager = appContainer.virtualCameraAdapterManager,
+                onBackClick = { navController.popBackStack() },
+                onOpenDiagnosticLogs = { navController.navigate(VCameraDestination.DiagnosticLogs) },
+                onOpenCompatibilityStatus = { navController.navigate(VCameraDestination.CompatibilityStatus) }
+            )
+        }
+
+        composable<VCameraDestination.CompatibilityStatus> {
+            CompatibilityStatusScreen(
+                compatibilityEngine = appContainer.compatibilityAssessmentEngine,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable<VCameraDestination.DiagnosticLogs> {
+            DiagnosticLogsScreen(
+                logger = appContainer.diagnosticLogger,
                 onBackClick = { navController.popBackStack() }
             )
         }
@@ -465,7 +616,11 @@ fun VCameraNavHost(
                 onOpenPrivacyDashboard = { navController.navigate(VCameraDestination.PrivacyDashboard) },
                 onOpenPerformanceMonitor = { navController.navigate(VCameraDestination.PerformanceMonitor) },
                 onOpenBackupRestore = { navController.navigate(VCameraDestination.BackupRestore) },
-                onOpenAbout = { navController.navigate(VCameraDestination.About) }
+                onOpenAbout = { navController.navigate(VCameraDestination.About) },
+                onOpenImportedApps = { navController.navigate(VCameraDestination.ImportedApps) },
+                onOpenVirtualApps = { navController.navigate(VCameraDestination.VirtualApps) },
+                onOpenCompatibilityStatus = { navController.navigate(VCameraDestination.CompatibilityStatus) },
+                onOpenDiagnosticLogs = { navController.navigate(VCameraDestination.DiagnosticLogs) }
             )
         }
 

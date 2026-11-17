@@ -230,6 +230,7 @@ fun ApkImportScreen(
     viewModel: ApkImportViewModel,
     onBackClick: () -> Unit,
     onDoneNavigateHome: () -> Unit,
+    onOpenImportedApps: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -262,7 +263,14 @@ fun ApkImportScreen(
             CustomToolbar(
                 title = "APK Import",
                 subtitle = "Storage Access Framework Inspector",
-                onBackClick = onBackClick
+                onBackClick = onBackClick,
+                actions = {
+                    if (onOpenImportedApps != null) {
+                        TextButton(onClick = onOpenImportedApps) {
+                            Text("Imported List")
+                        }
+                    }
+                }
             )
         }
     ) { innerPadding ->
@@ -277,7 +285,7 @@ fun ApkImportScreen(
             item {
                 StatusCard(
                     title = "Verified APK Inspection",
-                    message = "Select an .apk file via Android Storage Access Framework. VCamera Space validates archive integrity, package name, signing certificate, SDK range, native ABIs, and free storage before Android user-consented installation.",
+                    message = "Select an .apk file via Android Storage Access Framework. VCamera Space copies it into private storage, extracts icons & signatures, checks ABIs/SDKs, and keeps imported APKs separate from virtual space installs.",
                     severity = StatusSeverity.INFO,
                     icon = Icons.Default.FileOpen
                 )

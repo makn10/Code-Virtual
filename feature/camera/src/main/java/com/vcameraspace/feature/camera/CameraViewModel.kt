@@ -12,6 +12,9 @@ import com.vcameraspace.core.media.CameraSourceRegistry
 import com.vcameraspace.core.media.LocalPictureMetadata
 import com.vcameraspace.core.media.LocalVideoMetadata
 import com.vcameraspace.core.media.MediaInspector
+import com.vcameraspace.core.media.SharedCameraSourceConfig
+import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.core.media.YuvFrameFormat
 import com.vcameraspace.core.security.StreamProtocol
 import com.vcameraspace.core.security.UrlSecurityValidator
 import com.vcameraspace.core.security.UrlValidationResult
@@ -89,7 +92,8 @@ class CameraViewModel(
     private val packageName: String?,
     private val configRepository: CameraConfigurationRepository,
     private val mediaInspector: MediaInspector,
-    private val dispatchers: DispatcherProvider
+    private val dispatchers: DispatcherProvider,
+    private val adapterManager: VirtualCameraAdapterManager? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -373,6 +377,19 @@ class CameraViewModel(
             )
             when (res) {
                 is AppResult.Success -> {
+                    if (packageName == null && spaceId == "space_1") {
+                        adapterManager?.saveSharedConfig(
+                            SharedCameraSourceConfig(
+                                mode = current.mode,
+                                sourceUri = current.sourceUri.ifBlank { null },
+                                outputFormat = YuvFrameFormat.I420,
+                                targetWidth = w,
+                                targetHeight = h,
+                                enableAudio = current.enableAudio,
+                                autoReconnect = current.autoReconnect
+                            )
+                        )
+                    }
                     _uiState.update {
                         it.copy(
                             feedbackMessage = "Saved camera configuration for ${packageName ?: spaceId}.",
@@ -405,7 +422,8 @@ class CameraViewModel(
             packageName: String?,
             configRepository: CameraConfigurationRepository,
             mediaInspector: MediaInspector,
-            dispatchers: DispatcherProvider
+            dispatchers: DispatcherProvider,
+            adapterManager: VirtualCameraAdapterManager? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -414,7 +432,8 @@ class CameraViewModel(
                     packageName = packageName,
                     configRepository = configRepository,
                     mediaInspector = mediaInspector,
-                    dispatchers = dispatchers
+                    dispatchers = dispatchers,
+                    adapterManager = adapterManager
                 ) as T
             }
         }

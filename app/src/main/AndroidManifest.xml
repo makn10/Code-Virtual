@@ -33,6 +33,9 @@
         </intent>
         <package android:name="com.google.android.gms" />
         <package android:name="com.android.vending" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.imo.android.imoim" />
     </queries>
 
     <application

@@ -1,0 +1,148 @@
+name: Android CI Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android-build:
+    name: Build, Test, Lint & Publish Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 9.3.1 with cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Configure Gradle executable
+        id: gradle_cmd
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            echo "cmd=./gradlew" >> "$GITHUB_OUTPUT"
+          else
+            echo "cmd=gradle" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -n "$SDK_ROOT" ] && [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
+
+      - name: Generate temporary debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f ./debug.keystore ]; then
+            "${JAVA_HOME}/bin/keytool" -genkeypair \
+              -keystore ./debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+
+      - name: Run unit tests
+        shell: bash
+        run: ${{ steps.gradle_cmd.outputs.cmd }} :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Run Android Lint checks
+        shell: bash
+        run: ${{ steps.gradle_cmd.outputs.cmd }} :app:lintDebug --stacktrace --no-daemon
+
+      - name: Build Debug APK
+        shell: bash
+        run: ${{ steps.gradle_cmd.outputs.cmd }} :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify generated Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK_PATH" ] || [ ! -s "$APK_PATH" ]; then
+            echo "::error::Missing or empty Debug APK at $APK_PATH"
+            exit 1
+          fi
+          unzip -t "$APK_PATH" > /dev/null
+          echo "Verified ZIP/APK integrity: $APK_PATH ($(wc -c < "$APK_PATH") bytes)"
+
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -n "$SDK_ROOT" ] && [ -d "$SDK_ROOT/build-tools" ]; then
+            BUILD_TOOLS_DIR="$(ls -1d "$SDK_ROOT"/build-tools/* 2>/dev/null | sort -V | tail -n 1 || true)"
+            if [ -n "$BUILD_TOOLS_DIR" ] && [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+              "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$APK_PATH"
+            fi
+          fi
+
+      - name: Upload Debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcamera-space-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Determine release tag
+        if: ${{ github.event_name != 'pull_request' && success() }}
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v1.0.0-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=VCamera Space ${TAG} (Debug APK)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Debug APK to GitHub Releases
+        if: ${{ github.event_name != 'pull_request' && success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release_meta.outputs.tag }}"
+          TITLE="${{ steps.release_meta.outputs.title }}"
+          ASSET="app/build/outputs/apk/debug/app-debug.apk"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes "Automated Debug APK build for VCamera Space (${GITHUB_SHA}). Unit tests and Android Lint passed." \
+              --latest
+          fi

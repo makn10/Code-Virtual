@@ -10,12 +10,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vcameraspace.core.database.converter.VCameraTypeConverters
 import com.vcameraspace.core.database.dao.AppUsageDao
 import com.vcameraspace.core.database.dao.CameraConfigDao
+import com.vcameraspace.core.database.dao.ImportedApkDao
 import com.vcameraspace.core.database.dao.InstallationDao
 import com.vcameraspace.core.database.dao.LocationConfigDao
 import com.vcameraspace.core.database.dao.SpaceDao
 import com.vcameraspace.core.database.dao.VirtualAppDao
 import com.vcameraspace.core.database.entity.AppUsageEntity
 import com.vcameraspace.core.database.entity.CameraConfigEntity
+import com.vcameraspace.core.database.entity.ImportedApkEntity
 import com.vcameraspace.core.database.entity.InstallationEntity
 import com.vcameraspace.core.database.entity.LocationConfigEntity
 import com.vcameraspace.core.database.entity.SpaceEntity
@@ -29,9 +31,10 @@ import com.vcameraspace.core.datastore.UserPreferencesSnapshot
         CameraConfigEntity::class,
         LocationConfigEntity::class,
         InstallationEntity::class,
-        AppUsageEntity::class
+        AppUsageEntity::class,
+        ImportedApkEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(VCameraTypeConverters::class)
@@ -42,16 +45,46 @@ abstract class VCameraDatabase : RoomDatabase() {
     abstract fun locationConfigDao(): LocationConfigDao
     abstract fun installationDao(): InstallationDao
     abstract fun appUsageDao(): AppUsageDao
+    abstract fun importedApkDao(): ImportedApkDao
 
     companion object {
         const val DATABASE_NAME = "vcamera_space.db"
 
         /**
-         * Preserved forward migration scaffold for future schema increments.
+         * Non-destructive migration adding imported_apks storage table for Phase 2 APK Import Manager.
          */
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Reserved for future non-destructive schema additions.
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `imported_apks` (
+                        `id` TEXT NOT NULL,
+                        `display_name` TEXT NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `app_label` TEXT NOT NULL,
+                        `version_name` TEXT NOT NULL,
+                        `version_code` INTEGER NOT NULL,
+                        `min_sdk` INTEGER NOT NULL,
+                        `target_sdk` INTEGER NOT NULL,
+                        `signing_sha256` TEXT NOT NULL,
+                        `abis_csv` TEXT NOT NULL,
+                        `apk_file_path` TEXT NOT NULL,
+                        `icon_file_path` TEXT,
+                        `file_size_bytes` INTEGER NOT NULL,
+                        `is_valid_archive` INTEGER NOT NULL,
+                        `is_compatible` INTEGER NOT NULL,
+                        `compatibility_summary` TEXT NOT NULL,
+                        `imported_at_epoch_ms` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_imported_apks_package_name` ON `imported_apks` (`package_name`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_imported_apks_imported_at_epoch_ms` ON `imported_apks` (`imported_at_epoch_ms`)"
+                )
             }
         }
 

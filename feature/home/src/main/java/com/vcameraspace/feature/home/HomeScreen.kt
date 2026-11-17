@@ -43,6 +43,17 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.VideoFile
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,6 +102,18 @@ import com.vcameraspace.core.designsystem.components.VCameraLogo
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+enum class HomeQuickDestination(val label: String) {
+    IMPORTED_APKS("Imported APKs"),
+    VIRTUAL_APPS("Virtual Apps"),
+    VIRTUAL_CAMERA("Virtual Camera"),
+    PHOTO_SOURCE("Photo Source"),
+    VIDEO_SOURCE("Video Source"),
+    COMPATIBILITY("Compatibility"),
+    RUNTIME_STATUS("Runtime"),
+    DIAGNOSTIC_LOGS("Logs"),
+    SETTINGS("Settings")
+}
+
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -100,6 +123,7 @@ fun HomeScreen(
     onNavigateMenuAction: (HomeOverflowAction, spaceId: String) -> Unit,
     onOpenAppInfo: (spaceId: String, packageName: String) -> Unit,
     onOpenAppCameraSettings: (spaceId: String, packageName: String) -> Unit,
+    onOpenQuickDestination: ((HomeQuickDestination, spaceId: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -134,6 +158,9 @@ fun HomeScreen(
                 else -> viewModel.handleAppAction(app, action)
             }
         },
+        onQuickDestination = onOpenQuickDestination?.let { handler ->
+            { dest -> handler(dest, uiState.activeSpace.id) }
+        },
         modifier = modifier
     )
 }
@@ -149,6 +176,7 @@ fun HomeContent(
     onOpenSpaceManager: () -> Unit,
     onMenuAction: (HomeOverflowAction) -> Unit,
     onAppAction: (SpaceApp, AppLongPressAction) -> Unit,
+    onQuickDestination: ((HomeQuickDestination) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(
@@ -332,6 +360,41 @@ fun HomeContent(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (onQuickDestination != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeQuickDestination.entries.forEach { dest ->
+                        AssistChip(
+                            onClick = { onQuickDestination(dest) },
+                            label = { Text(dest.label) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = when (dest) {
+                                        HomeQuickDestination.IMPORTED_APKS -> Icons.Default.FileOpen
+                                        HomeQuickDestination.VIRTUAL_APPS -> Icons.Default.Apps
+                                        HomeQuickDestination.VIRTUAL_CAMERA -> Icons.Default.Videocam
+                                        HomeQuickDestination.PHOTO_SOURCE -> Icons.Default.Photo
+                                        HomeQuickDestination.VIDEO_SOURCE -> Icons.Default.VideoFile
+                                        HomeQuickDestination.COMPATIBILITY -> Icons.Default.VerifiedUser
+                                        HomeQuickDestination.RUNTIME_STATUS -> Icons.Default.Speed
+                                        HomeQuickDestination.DIAGNOSTIC_LOGS -> Icons.Default.BugReport
+                                        HomeQuickDestination.SETTINGS -> Icons.Default.Settings
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("home_quick_${dest.name.lowercase()}")
+                        )
+                    }
+                }
+            }
+
             AnimatedVisibility(visible = uiState.normalModeEnabled) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     StatusCard(
