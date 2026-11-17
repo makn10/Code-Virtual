@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">VCamera Space</string>
+    <string name="home_toolbar_title">VCamera</string>
+    <string name="splash_subtitle">Your Space. Your Control.</string>
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_title_1">Multiple Spaces</string>
+    <string name="onboarding_desc_1">Organize supported applications in separate workspaces.</string>
+    <string name="onboarding_title_2">Virtual Camera</string>
+    <string name="onboarding_desc_2">Configure local videos, network streams and pictures as supported camera sources.</string>
+    <string name="onboarding_title_3">Privacy &amp; Control</string>
+    <string name="onboarding_desc_3">Manage app permissions, settings and workspace configurations.</string>
+    <string name="home_empty_label">Empty</string>
+    <string name="home_empty_hint">Tap the + button to add a supported application</string>
+    <string name="cd_vcamera_logo">VCamera Space logo</string>
+    <string name="cd_add_app_fab">Clone or add application</string>
+    <string name="cd_more_options">More options</string>
+    <string name="cd_back">Navigate back</string>
+    <string name="cd_empty_illustration">Serene landscape with bird, trees, and clouds</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_ok">OK</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "VCamera Space",
+  "description": "Multi-space application management and virtual camera configuration platform for Android.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
