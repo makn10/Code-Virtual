@@ -54,6 +54,56 @@ data class SpaceApp(
 )
 
 /**
+ * Metadata and helpers for the built-in Space Virtual Camera application
+ * and known external camera/video-calling packages.
+ */
+object BuiltInVirtualApps {
+    const val VIRTUAL_CAMERA_PACKAGE = "com.vcameraspace.virtualcamera"
+    const val VIRTUAL_CAMERA_LABEL = "Virtual Camera"
+    const val VIRTUAL_CAMERA_VERSION = "1.0-live"
+
+    private val cameraOrSocialKeywords = listOf(
+        "camera",
+        "whatsapp",
+        "instagram",
+        "facebook.orca",
+        "messenger",
+        "imoim",
+        "zoom",
+        "telegram",
+        "snapchat",
+        "tiktok",
+        "meet",
+        "skype"
+    )
+
+    fun isBuiltInVirtualCamera(packageName: String?): Boolean =
+        packageName == VIRTUAL_CAMERA_PACKAGE
+
+    fun isKnownCameraOrSocialApp(packageName: String, label: String = ""): Boolean {
+        val pkgLower = packageName.lowercase()
+        val labelLower = label.lowercase()
+        return cameraOrSocialKeywords.any { keyword ->
+            pkgLower.contains(keyword) || labelLower.contains(keyword)
+        }
+    }
+
+    fun createVirtualCameraApp(
+        spaceId: String,
+        hasCustomCameraConfig: Boolean = false
+    ): SpaceApp = SpaceApp(
+        id = "${spaceId}::$VIRTUAL_CAMERA_PACKAGE",
+        spaceId = spaceId,
+        packageName = VIRTUAL_CAMERA_PACKAGE,
+        label = VIRTUAL_CAMERA_LABEL,
+        versionName = VIRTUAL_CAMERA_VERSION,
+        architecture = ExecutionArchitecture.SUPPORTED_SANDBOX,
+        status = VirtualAppStatus.READY,
+        hasCustomCameraConfig = hasCustomCameraConfig
+    )
+}
+
+/**
  * User-selected theme preference persisted via DataStore.
  */
 enum class ThemePreference {

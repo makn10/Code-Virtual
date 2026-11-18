@@ -4,11 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.vcameraspace.core.common.model.AppResult
+import com.vcameraspace.core.common.model.BuiltInVirtualApps
 import com.vcameraspace.core.common.model.Space
 import com.vcameraspace.core.common.model.SpaceApp
 import com.vcameraspace.core.database.repository.SpaceRepository
 import com.vcameraspace.core.datastore.UserPreferencesRepository
 import com.vcameraspace.core.datastore.UserPreferencesSnapshot
+import com.vcameraspace.core.media.CameraSourceRegistry
+import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.virtualengine.api.CameraSourceMode
 import com.vcameraspace.virtualengine.api.VirtualProcessManager
 import com.vcameraspace.virtualengine.api.VirtualStorageManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,11 +46,18 @@ enum class AppLongPressAction(val label: String, val isDestructive: Boolean = fa
     ADD_SHORTCUT("Add Shortcut")
 }
 
+data class HomePreLaunchPrompt(
+    val app: SpaceApp,
+    val activeMode: CameraSourceMode,
+    val activeSourceLabel: String
+)
+
 data class HomeUiState(
     val spaces: List<Space> = defaultFoundationSpaces(),
     val activeSpaceIndex: Int = 0,
     val appsBySpaceId: Map<String, List<SpaceApp>> = emptyMap(),
     val normalModeEnabled: Boolean = false,
+    val pendingPreLaunchPrompt: HomePreLaunchPrompt? = null,
     val statusBannerMessage: String? = null
 ) {
     val activeSpace: Space
@@ -76,10 +87,12 @@ class HomeViewModel(
     private val spaceRepository: SpaceRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
     private val virtualProcessManager: VirtualProcessManager? = null,
-    private val virtualStorageManager: VirtualStorageManager? = null
+    private val virtualStorageManager: VirtualStorageManager? = null,
+    private val cameraAdapterManager: VirtualCameraAdapterManager? = null
 ) : ViewModel() {
 
     private val _bannerMessage = MutableStateFlow<String?>(null)
+    private val _pendingPreLaunch = MutableStateFlow<HomePreLaunchPrompt?>(null)
 
     init {
         viewModelScope.launch {
@@ -91,8 +104,9 @@ class HomeViewModel(
         spaceRepository.observeSpaces(),
         spaceRepository.observeAppsBySpace(),
         userPreferencesRepository.userPreferences,
+        _pendingPreLaunch,
         _bannerMessage
-    ) { dbSpaces, appsBySpace, prefs, banner ->
+    ) { dbSpaces, appsBySpace, prefs, pendingPrompt, banner ->
         val spaces = dbSpaces.ifEmpty { HomeUiState.defaultFoundationSpaces() }
         val activeIdx = spaces.indexOfFirst { it.id == prefs.activeSpaceId }.let { idx ->
             if (idx >= 0) idx else spaces.indexOfFirst { it.isDefault }.coerceAtLeast(0)
@@ -102,6 +116,7 @@ class HomeViewModel(
             activeSpaceIndex = activeIdx,
             appsBySpaceId = appsBySpace,
             normalModeEnabled = prefs.normalModeEnabled,
+            pendingPreLaunchPrompt = pendingPrompt,
             statusBannerMessage = banner
         )
     }.stateIn(
@@ -138,6 +153,44 @@ class HomeViewModel(
                 "All tracked supported processes are already stopped."
             }
         }
+    }
+
+    fun requestOpenApp(
+        app: SpaceApp,
+        onOpenBuiltInVirtualCamera: (spaceId: String, packageName: String?) -> Unit
+    ) {
+        if (BuiltInVirtualApps.isBuiltInVirtualCamera(app.packageName)) {
+            onOpenBuiltInVirtualCamera(app.spaceId, app.packageName)
+            handleAppAction(app, AppLongPressAction.OPEN)
+            return
+        }
+        viewModelScope.launch {
+            val adapter = cameraAdapterManager
+            if (adapter != null) {
+                val resolved = adapter.resolveEffectiveConfig(app.spaceId, app.packageName)
+                val isVirtualActive = resolved.mode != CameraSourceMode.REAL_DEVICE
+                val isCameraApp = BuiltInVirtualApps.isKnownCameraOrSocialApp(app.packageName, app.label)
+                if (isVirtualActive || isCameraApp) {
+                    val label = CameraSourceRegistry.sourceFor(resolved.mode).label
+                    _pendingPreLaunch.value = HomePreLaunchPrompt(
+                        app = app,
+                        activeMode = resolved.mode,
+                        activeSourceLabel = label
+                    )
+                    return@launch
+                }
+            }
+            handleAppAction(app, AppLongPressAction.OPEN)
+        }
+    }
+
+    fun dismissPreLaunchPrompt() {
+        _pendingPreLaunch.value = null
+    }
+
+    fun confirmOpenExternalApp(app: SpaceApp) {
+        _pendingPreLaunch.value = null
+        handleAppAction(app, AppLongPressAction.OPEN)
     }
 
     fun handleAppAction(app: SpaceApp, action: AppLongPressAction) {
@@ -185,7 +238,8 @@ class HomeViewModel(
             spaceRepository: SpaceRepository,
             userPreferencesRepository: UserPreferencesRepository,
             virtualProcessManager: VirtualProcessManager? = null,
-            virtualStorageManager: VirtualStorageManager? = null
+            virtualStorageManager: VirtualStorageManager? = null,
+            cameraAdapterManager: VirtualCameraAdapterManager? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -193,7 +247,8 @@ class HomeViewModel(
                     spaceRepository = spaceRepository,
                     userPreferencesRepository = userPreferencesRepository,
                     virtualProcessManager = virtualProcessManager,
-                    virtualStorageManager = virtualStorageManager
+                    virtualStorageManager = virtualStorageManager,
+                    cameraAdapterManager = cameraAdapterManager
                 ) as T
             }
         }

@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":core:database"))
     implementation(project(":core:datastore"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:media"))
     implementation(project(":virtual-engine:api"))
 
     implementation(platform(libs.androidx.compose.bom))

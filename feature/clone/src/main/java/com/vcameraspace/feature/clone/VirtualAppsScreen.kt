@@ -53,6 +53,7 @@ import com.vcameraspace.core.common.model.SpaceApp
 import com.vcameraspace.core.designsystem.components.ConfirmationDialog
 import com.vcameraspace.core.designsystem.components.CustomToolbar
 import com.vcameraspace.core.designsystem.components.EmptyState
+import com.vcameraspace.core.designsystem.components.PreLaunchVirtualCameraDialog
 import com.vcameraspace.core.designsystem.components.PrimaryButton
 import com.vcameraspace.core.designsystem.components.StatusCard
 import com.vcameraspace.core.designsystem.components.StatusSeverity
@@ -64,6 +65,7 @@ fun VirtualAppsScreen(
     onOpenCloneApp: (spaceId: String) -> Unit,
     onOpenAppInfo: (spaceId: String, packageName: String) -> Unit,
     onOpenAppCameraSettings: (spaceId: String, packageName: String) -> Unit,
+    onOpenBuiltInVirtualCamera: ((spaceId: String, packageName: String?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -152,7 +154,12 @@ fun VirtualAppsScreen(
                     items(uiState.filteredEntries, key = { it.app.id }) { entry ->
                         VirtualAppInstanceCard(
                             entry = entry,
-                            onLaunch = { viewModel.launchApp(entry.app) },
+                            onLaunch = {
+                                viewModel.requestLaunchApp(entry.app) { sId, pkg ->
+                                    onOpenBuiltInVirtualCamera?.invoke(sId, pkg)
+                                        ?: onOpenAppCameraSettings(sId, pkg ?: entry.app.packageName)
+                                }
+                            },
                             onStop = { viewModel.stopApp(entry.app) },
                             onOpenDetails = { onOpenAppInfo(entry.app.spaceId, entry.app.packageName) },
                             onOpenCamera = { onOpenAppCameraSettings(entry.app.spaceId, entry.app.packageName) },
@@ -204,6 +211,27 @@ fun VirtualAppsScreen(
             confirmButton = {
                 TextButton(onClick = { pendingClone = null }) { Text("Close") }
             }
+        )
+    }
+
+    uiState.pendingPreLaunchPrompt?.let { prompt ->
+        PreLaunchVirtualCameraDialog(
+            appName = prompt.app.label,
+            activeSourceLabel = prompt.activeSourceLabel,
+            onOpenBuiltInVirtualCamera = {
+                viewModel.dismissPreLaunchPrompt()
+                onOpenBuiltInVirtualCamera?.invoke(prompt.app.spaceId, prompt.app.packageName)
+                    ?: onOpenAppCameraSettings(prompt.app.spaceId, prompt.app.packageName)
+            },
+            onConfigureSource = {
+                viewModel.dismissPreLaunchPrompt()
+                onOpenAppCameraSettings(prompt.app.spaceId, prompt.app.packageName)
+            },
+            onOpenExternalAppAnyway = {
+                viewModel.launchApp(prompt.app)
+            },
+            onDismiss = viewModel::dismissPreLaunchPrompt,
+            icon = Icons.Default.Videocam
         )
     }
 }

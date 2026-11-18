@@ -6,10 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.vcameraspace.core.common.diagnostics.DiagnosticCategory
 import com.vcameraspace.core.common.diagnostics.DiagnosticLogger
 import com.vcameraspace.core.common.model.AppResult
+import com.vcameraspace.core.common.model.BuiltInVirtualApps
 import com.vcameraspace.core.common.model.Space
 import com.vcameraspace.core.common.model.SpaceApp
 import com.vcameraspace.core.database.repository.SpaceRepository
+import com.vcameraspace.core.media.CameraConfigurationRepository
+import com.vcameraspace.core.media.CameraSourceRegistry
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.virtualengine.api.CameraSourceMode
 import com.vcameraspace.virtualengine.api.ProcessState
 import com.vcameraspace.virtualengine.api.VirtualPackageManager
 import com.vcameraspace.virtualengine.api.VirtualStorageManager
@@ -30,10 +34,17 @@ data class VirtualAppEntry(
     val isSharedCameraSource: Boolean
 )
 
+data class PreLaunchVirtualAppPrompt(
+    val app: SpaceApp,
+    val activeMode: CameraSourceMode,
+    val activeSourceLabel: String
+)
+
 data class VirtualAppsUiState(
     val spaces: List<Space> = emptyList(),
     val selectedSpaceFilter: String? = null,
     val entries: List<VirtualAppEntry> = emptyList(),
+    val pendingPreLaunchPrompt: PreLaunchVirtualAppPrompt? = null,
     val feedbackMessage: String? = null
 ) {
     val filteredEntries: List<VirtualAppEntry>
@@ -46,10 +57,12 @@ class VirtualAppsViewModel(
     private val processManager: ManagedVirtualProcessManager,
     private val storageManager: VirtualStorageManager,
     private val cameraAdapterManager: VirtualCameraAdapterManager,
-    private val logger: DiagnosticLogger? = null
+    private val logger: DiagnosticLogger? = null,
+    private val cameraConfigRepository: CameraConfigurationRepository? = null
 ) : ViewModel() {
 
     private val _selectedSpaceFilter = MutableStateFlow<String?>(null)
+    private val _pendingPreLaunch = MutableStateFlow<PreLaunchVirtualAppPrompt?>(null)
     private val _feedback = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<VirtualAppsUiState> = combine(
@@ -57,8 +70,8 @@ class VirtualAppsViewModel(
         spaceRepository.observeAppsBySpace(),
         processManager.observeAllActiveProcesses(),
         cameraAdapterManager.state,
-        combine(_selectedSpaceFilter, _feedback) { f, msg -> f to msg }
-    ) { spaces, appsMap, processes, adapterState, (filter, msg) ->
+        combine(_selectedSpaceFilter, _pendingPreLaunch, _feedback) { f, p, msg -> Triple(f, p, msg) }
+    ) { spaces, appsMap, processes, adapterState, (filter, pendingPrompt, msg) ->
         val spaceNames = spaces.associate { it.id to it.name }
         val flattened = appsMap.values.flatten().map { app ->
             val proc = processes.firstOrNull { it.spaceId == app.spaceId && it.packageName == app.packageName }
@@ -79,6 +92,7 @@ class VirtualAppsViewModel(
             spaces = spaces,
             selectedSpaceFilter = filter,
             entries = flattened,
+            pendingPreLaunchPrompt = pendingPrompt,
             feedbackMessage = msg
         )
     }.stateIn(
@@ -91,7 +105,38 @@ class VirtualAppsViewModel(
         _selectedSpaceFilter.value = spaceId
     }
 
+    fun requestLaunchApp(
+        app: SpaceApp,
+        onOpenBuiltInVirtualCamera: (spaceId: String, packageName: String?) -> Unit
+    ) {
+        if (BuiltInVirtualApps.isBuiltInVirtualCamera(app.packageName)) {
+            onOpenBuiltInVirtualCamera(app.spaceId, app.packageName)
+            launchApp(app)
+            return
+        }
+        viewModelScope.launch {
+            val resolved = cameraAdapterManager.resolveEffectiveConfig(app.spaceId, app.packageName)
+            val isVirtualActive = resolved.mode != CameraSourceMode.REAL_DEVICE
+            val isCameraApp = BuiltInVirtualApps.isKnownCameraOrSocialApp(app.packageName, app.label)
+            if (isVirtualActive || isCameraApp) {
+                val label = CameraSourceRegistry.sourceFor(resolved.mode).label
+                _pendingPreLaunch.value = PreLaunchVirtualAppPrompt(
+                    app = app,
+                    activeMode = resolved.mode,
+                    activeSourceLabel = label
+                )
+            } else {
+                launchApp(app)
+            }
+        }
+    }
+
+    fun dismissPreLaunchPrompt() {
+        _pendingPreLaunch.value = null
+    }
+
     fun launchApp(app: SpaceApp) {
+        _pendingPreLaunch.value = null
         viewModelScope.launch {
             when (val res = processManager.startProcess(app.spaceId, app.packageName)) {
                 is AppResult.Success -> {
@@ -166,7 +211,8 @@ class VirtualAppsViewModel(
             processManager: ManagedVirtualProcessManager,
             storageManager: VirtualStorageManager,
             cameraAdapterManager: VirtualCameraAdapterManager,
-            logger: DiagnosticLogger? = null
+            logger: DiagnosticLogger? = null,
+            cameraConfigRepository: CameraConfigurationRepository? = null
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -176,7 +222,8 @@ class VirtualAppsViewModel(
                     processManager = processManager,
                     storageManager = storageManager,
                     cameraAdapterManager = cameraAdapterManager,
-                    logger = logger
+                    logger = logger,
+                    cameraConfigRepository = cameraConfigRepository
                 ) as T
             }
         }

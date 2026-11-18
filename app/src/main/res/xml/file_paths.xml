@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path
+        name="virtual_photos"
+        path="captures/photos/" />
+    <files-path
+        name="virtual_clips"
+        path="captures/clips/" />
+    <cache-path
+        name="virtual_cache"
+        path="captures/" />
+</paths>

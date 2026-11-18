@@ -89,12 +89,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vcameraspace.core.common.model.BuiltInVirtualApps
 import com.vcameraspace.core.common.model.ExecutionArchitecture
 import com.vcameraspace.core.common.model.Space
 import com.vcameraspace.core.common.model.SpaceApp
 import com.vcameraspace.core.designsystem.components.AppIconCard
 import com.vcameraspace.core.designsystem.components.ConfirmationDialog
 import com.vcameraspace.core.designsystem.components.EmptyState
+import com.vcameraspace.core.designsystem.components.PreLaunchVirtualCameraDialog
 import com.vcameraspace.core.designsystem.components.SpaceIndicator
 import com.vcameraspace.core.designsystem.components.StatusCard
 import com.vcameraspace.core.designsystem.components.StatusSeverity
@@ -103,6 +105,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 enum class HomeQuickDestination(val label: String) {
+    VIRTUAL_CAMERA_VIEWFINDER("Open Virtual Cam"),
     IMPORTED_APKS("Imported APKs"),
     VIRTUAL_APPS("Virtual Apps"),
     VIRTUAL_CAMERA("Virtual Camera"),
@@ -124,6 +127,7 @@ fun HomeScreen(
     onOpenAppInfo: (spaceId: String, packageName: String) -> Unit,
     onOpenAppCameraSettings: (spaceId: String, packageName: String) -> Unit,
     onOpenQuickDestination: ((HomeQuickDestination, spaceId: String) -> Unit)? = null,
+    onOpenVirtualCameraViewfinder: ((spaceId: String, packageName: String?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -153,6 +157,10 @@ fun HomeScreen(
         },
         onAppAction = { app, action ->
             when (action) {
+                AppLongPressAction.OPEN -> viewModel.requestOpenApp(app) { sId, pkg ->
+                    onOpenVirtualCameraViewfinder?.invoke(sId, pkg)
+                        ?: onOpenAppCameraSettings(sId, pkg ?: app.packageName)
+                }
                 AppLongPressAction.APP_INFORMATION -> onOpenAppInfo(app.spaceId, app.packageName)
                 AppLongPressAction.CAMERA_SETTINGS -> onOpenAppCameraSettings(app.spaceId, app.packageName)
                 else -> viewModel.handleAppAction(app, action)
@@ -163,6 +171,27 @@ fun HomeScreen(
         },
         modifier = modifier
     )
+
+    uiState.pendingPreLaunchPrompt?.let { prompt ->
+        PreLaunchVirtualCameraDialog(
+            appName = prompt.app.label,
+            activeSourceLabel = prompt.activeSourceLabel,
+            onOpenBuiltInVirtualCamera = {
+                viewModel.dismissPreLaunchPrompt()
+                onOpenVirtualCameraViewfinder?.invoke(prompt.app.spaceId, prompt.app.packageName)
+                    ?: onOpenAppCameraSettings(prompt.app.spaceId, prompt.app.packageName)
+            },
+            onConfigureSource = {
+                viewModel.dismissPreLaunchPrompt()
+                onOpenAppCameraSettings(prompt.app.spaceId, prompt.app.packageName)
+            },
+            onOpenExternalAppAnyway = {
+                viewModel.confirmOpenExternalApp(prompt.app)
+            },
+            onDismiss = viewModel::dismissPreLaunchPrompt,
+            icon = Icons.Default.Videocam
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -380,9 +409,10 @@ fun HomeContent(
                             leadingIcon = {
                                 Icon(
                                     imageVector = when (dest) {
+                                        HomeQuickDestination.VIRTUAL_CAMERA_VIEWFINDER -> Icons.Default.Videocam
                                         HomeQuickDestination.IMPORTED_APKS -> Icons.Default.FileOpen
                                         HomeQuickDestination.VIRTUAL_APPS -> Icons.Default.Apps
-                                        HomeQuickDestination.VIRTUAL_CAMERA -> Icons.Default.Videocam
+                                        HomeQuickDestination.VIRTUAL_CAMERA -> Icons.Default.Tune
                                         HomeQuickDestination.PHOTO_SOURCE -> Icons.Default.Photo
                                         HomeQuickDestination.VIDEO_SOURCE -> Icons.Default.VideoFile
                                         HomeQuickDestination.COMPATIBILITY -> Icons.Default.VerifiedUser
@@ -566,7 +596,8 @@ private fun SpacePageContent(
                 items(apps, key = { it.id }) { app ->
                     AppIconCard(
                         appName = app.label,
-                        hasCustomCamera = app.hasCustomCameraConfig,
+                        hasCustomCamera = app.hasCustomCameraConfig || BuiltInVirtualApps.isBuiltInVirtualCamera(app.packageName),
+                        fallbackIcon = if (BuiltInVirtualApps.isBuiltInVirtualCamera(app.packageName)) Icons.Default.Videocam else null,
                         onClick = { onAppClick(app) },
                         onLongClick = { onAppLongClick(app) },
                         testTag = "home_app_card_${app.packageName}"

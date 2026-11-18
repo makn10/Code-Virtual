@@ -40,6 +40,12 @@ sealed interface VCameraDestination {
     ) : VCameraDestination
 
     @Serializable
+    data class VirtualCameraViewfinder(
+        val spaceId: String,
+        val packageName: String? = null
+    ) : VCameraDestination
+
+    @Serializable
     data class CameraLab(
         val spaceId: String,
         val packageName: String? = null

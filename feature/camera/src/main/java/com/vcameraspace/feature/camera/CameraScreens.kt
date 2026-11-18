@@ -72,6 +72,7 @@ fun VirtualCameraSettingScreen(
     onOpenCameraLab: () -> Unit,
     onOpenPhotoSourceSelect: (() -> Unit)? = null,
     onOpenVideoSourceSelect: (() -> Unit)? = null,
+    onOpenViewfinder: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -415,10 +416,22 @@ fun VirtualCameraSettingScreen(
                 }
             }
 
+            if (onOpenViewfinder != null) {
+                item {
+                    PrimaryButton(
+                        text = "Open Full-Screen Virtual Camera",
+                        icon = Icons.Default.CameraAlt,
+                        onClick = onOpenViewfinder,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "open_viewfinder_button"
+                    )
+                }
+            }
+
             item {
                 StatusCard(
                     title = "Android Camera Scope Disclosure",
-                    message = "Ordinary Android apps cannot universally intercept Camera1/Camera2/CameraX streams inside unrelated third-party apps. This configuration controls VCamera Space previews and explicitly supported integrations.",
+                    message = "Ordinary Android apps cannot universally intercept Camera1/Camera2/CameraX streams inside unrelated third-party apps. Open the Built-in Virtual Camera or select VCamera Space in Android photo/video capture choosers to use your configured media.",
                     severity = StatusSeverity.WARNING
                 )
             }

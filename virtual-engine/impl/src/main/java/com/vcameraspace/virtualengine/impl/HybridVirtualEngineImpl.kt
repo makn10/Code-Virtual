@@ -13,9 +13,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import androidx.core.content.ContextCompat
 import com.vcameraspace.core.common.coroutines.DispatcherProvider
 import com.vcameraspace.core.common.model.AppError
 import com.vcameraspace.core.common.model.AppResult
+import com.vcameraspace.core.common.model.BuiltInVirtualApps
 import com.vcameraspace.core.common.model.ExecutionArchitecture
 import com.vcameraspace.core.common.model.SpaceApp
 import com.vcameraspace.core.common.model.VirtualAppStatus
@@ -204,10 +206,6 @@ class ManagedVirtualProcessManager(
     override suspend fun startProcess(spaceId: String, packageName: String): AppResult<ProcessState> =
         withContext(dispatchers.io) {
             runCatching {
-                val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-                    ?: error("Package $packageName does not expose a launchable activity or is not visible.")
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
                 val existing = _processes.value.firstOrNull {
                     it.spaceId == spaceId && it.packageName == packageName
                 }
@@ -219,6 +217,26 @@ class ManagedVirtualProcessManager(
                     crashCount = existing?.crashCount ?: 0,
                     lastCrashMessage = existing?.lastCrashMessage
                 )
+
+                if (BuiltInVirtualApps.isBuiltInVirtualCamera(packageName)) {
+                    upsertProcessState(next)
+                    val entity = virtualAppDao.observeAppsForSpace(spaceId).first()
+                        .firstOrNull { it.packageName == packageName }
+                    if (entity != null) {
+                        virtualAppDao.upsertApp(
+                            entity.copy(
+                                status = VirtualAppStatus.RUNNING,
+                                lastOpenedEpochMs = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    return@runCatching next
+                }
+
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                    ?: error("Package $packageName does not expose a launchable activity or is not visible.")
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
                 upsertProcessState(next)
 
                 val entity = virtualAppDao.observeAppsForSpace(spaceId).first()
@@ -376,6 +394,23 @@ class AndroidCompatibilityChecker(
 
     override suspend fun evaluatePackage(packageName: String): AppResult<CompatibilityReport> =
         withContext(dispatchers.io) {
+            if (BuiltInVirtualApps.isBuiltInVirtualCamera(packageName)) {
+                return@withContext AppResult.Success(
+                    CompatibilityReport(
+                        packageName = packageName,
+                        isLaunchSupported = true,
+                        recommendedArchitecture = ExecutionArchitecture.SUPPORTED_SANDBOX,
+                        issues = listOf(
+                            CompatibilityIssue(
+                                code = "BUILTIN_VIRTUAL_CAMERA",
+                                title = "Built-In Space Virtual Camera",
+                                detail = "Renders the selected Media Section video, picture, or stream via OpenGL ES with snapshot and virtual clip capture.",
+                                severity = CompatibilitySeverity.INFO
+                            )
+                        )
+                    )
+                )
+            }
             runCatching {
                 val pm = context.packageManager
                 val pkgInfo = getPackageInfoCompat(pm, packageName)
@@ -483,7 +518,18 @@ class AndroidCompatibilityChecker(
             @Suppress("DEPRECATION")
             pm.queryIntentActivities(mainIntent, 0)
         }
-        return resolveInfos
+        val builtInIcon = runCatching {
+            val iconRes = context.applicationInfo.icon
+            if (iconRes != 0) ContextCompat.getDrawable(context, iconRes) else null
+        }.getOrNull()
+        val builtInCamera = InstalledAppCandidate(
+            packageName = BuiltInVirtualApps.VIRTUAL_CAMERA_PACKAGE,
+            label = "${BuiltInVirtualApps.VIRTUAL_CAMERA_LABEL} (VCamera Built-In)",
+            versionName = BuiltInVirtualApps.VIRTUAL_CAMERA_VERSION,
+            isSystemApp = false,
+            icon = builtInIcon
+        )
+        val externalApps = resolveInfos
             .mapNotNull { info ->
                 val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
                 if (pkg == context.packageName) return@mapNotNull null
@@ -499,6 +545,7 @@ class AndroidCompatibilityChecker(
             }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
+        return listOf(builtInCamera) + externalApps
     }
 
     fun inspectApkFromUri(uri: Uri): AppResult<ApkInspectionResult> {
@@ -711,6 +758,27 @@ class AndroidVirtualAppInstaller(
                 val msg = blocker?.detail ?: "Application is incompatible with this Android environment."
                 recordInstallEnd(installId, spaceId, packageName, "FAILED", msg, startedAt)
                 return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
+            }
+
+            if (BuiltInVirtualApps.isBuiltInVirtualCamera(packageName)) {
+                storageManager.ensureSpaceDirectories(spaceId)
+                val builtInApp = BuiltInVirtualApps.createVirtualCameraApp(spaceId)
+                virtualAppDao.upsertApp(
+                    VirtualAppEntity(
+                        id = builtInApp.id,
+                        spaceId = spaceId,
+                        packageName = builtInApp.packageName,
+                        label = builtInApp.label,
+                        versionName = builtInApp.versionName,
+                        architecture = builtInApp.architecture,
+                        status = VirtualAppStatus.READY,
+                        hasCustomCameraConfig = false,
+                        lastOpenedEpochMs = null,
+                        addedAtEpochMs = System.currentTimeMillis()
+                    )
+                )
+                recordInstallEnd(installId, spaceId, packageName, "COMPLETED", null, startedAt)
+                return@withContext AppResult.Success(builtInApp)
             }
 
             val pm = context.packageManager

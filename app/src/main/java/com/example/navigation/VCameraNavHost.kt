@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -35,9 +36,12 @@ import com.vcameraspace.feature.backup.BackupRestoreViewModel
 import com.vcameraspace.feature.camera.CameraLabScreen
 import com.vcameraspace.feature.camera.CameraPreviewScreen
 import com.vcameraspace.feature.camera.CameraViewModel
+import com.vcameraspace.feature.camera.CaptureIntentMode
 import com.vcameraspace.feature.camera.PhotoSourceScreen
 import com.vcameraspace.feature.camera.VideoSourceScreen
 import com.vcameraspace.feature.camera.VirtualCameraSettingScreen
+import com.vcameraspace.feature.camera.VirtualCameraViewfinderScreen
+import com.vcameraspace.feature.camera.VirtualViewfinderViewModel
 import com.vcameraspace.feature.clone.ApkImportScreen
 import com.vcameraspace.feature.clone.ApkImportViewModel
 import com.vcameraspace.feature.clone.AppInformationScreen
@@ -124,7 +128,8 @@ fun VCameraNavHost(
                     spaceRepository = appContainer.spaceRepository,
                     userPreferencesRepository = appContainer.userPreferencesRepository,
                     virtualProcessManager = appContainer.processManager,
-                    virtualStorageManager = appContainer.storageManager
+                    virtualStorageManager = appContainer.storageManager,
+                    cameraAdapterManager = appContainer.virtualCameraAdapterManager
                 )
             )
             HomeScreen(
@@ -170,6 +175,9 @@ fun VCameraNavHost(
                 },
                 onOpenQuickDestination = { destination, spaceId ->
                     when (destination) {
+                        HomeQuickDestination.VIRTUAL_CAMERA_VIEWFINDER -> navController.navigate(
+                            VCameraDestination.VirtualCameraViewfinder(spaceId = spaceId)
+                        )
                         HomeQuickDestination.IMPORTED_APKS -> navController.navigate(VCameraDestination.ImportedApps)
                         HomeQuickDestination.VIRTUAL_APPS -> navController.navigate(VCameraDestination.VirtualApps)
                         HomeQuickDestination.VIRTUAL_CAMERA -> navController.navigate(
@@ -186,6 +194,14 @@ fun VCameraNavHost(
                         HomeQuickDestination.DIAGNOSTIC_LOGS -> navController.navigate(VCameraDestination.DiagnosticLogs)
                         HomeQuickDestination.SETTINGS -> navController.navigate(VCameraDestination.GeneralSettings)
                     }
+                },
+                onOpenVirtualCameraViewfinder = { spaceId, pkg ->
+                    navController.navigate(
+                        VCameraDestination.VirtualCameraViewfinder(
+                            spaceId = spaceId,
+                            packageName = pkg
+                        )
+                    )
                 }
             )
         }
@@ -295,6 +311,9 @@ fun VCameraNavHost(
                 },
                 onOpenAppCameraSettings = { spaceId, pkg ->
                     navController.navigate(VCameraDestination.VirtualCameraSetting(spaceId, pkg))
+                },
+                onOpenBuiltInVirtualCamera = { spaceId, pkg ->
+                    navController.navigate(VCameraDestination.VirtualCameraViewfinder(spaceId, pkg))
                 }
             )
         }
@@ -389,6 +408,14 @@ fun VCameraNavHost(
                             packageName = route.packageName
                         )
                     )
+                },
+                onOpenViewfinder = {
+                    navController.navigate(
+                        VCameraDestination.VirtualCameraViewfinder(
+                            spaceId = route.spaceId,
+                            packageName = route.packageName
+                        )
+                    )
                 }
             )
         }
@@ -449,6 +476,36 @@ fun VCameraNavHost(
                 onOpenCameraLab = {
                     navController.navigate(
                         VCameraDestination.CameraLab(
+                            spaceId = route.spaceId,
+                            packageName = route.packageName
+                        )
+                    )
+                }
+            )
+        }
+
+        composable<VCameraDestination.VirtualCameraViewfinder> { backStackEntry ->
+            val route = backStackEntry.toRoute<VCameraDestination.VirtualCameraViewfinder>()
+            val authority = "${context.packageName}.fileprovider"
+            val viewfinderViewModel: VirtualViewfinderViewModel = viewModel(
+                factory = VirtualViewfinderViewModel.factory(
+                    spaceId = route.spaceId,
+                    packageName = route.packageName,
+                    captureMode = CaptureIntentMode.INTERACTIVE,
+                    configRepository = appContainer.cameraConfigRepository,
+                    adapterManager = appContainer.virtualCameraAdapterManager,
+                    captureExporter = appContainer.virtualCaptureExporter,
+                    contentUriResolver = { file ->
+                        runCatching { FileProvider.getUriForFile(context, authority, file) }.getOrNull()
+                    }
+                )
+            )
+            VirtualCameraViewfinderScreen(
+                viewModel = viewfinderViewModel,
+                onBackClick = { navController.popBackStack() },
+                onOpenSettings = {
+                    navController.navigate(
+                        VCameraDestination.VirtualCameraSetting(
                             spaceId = route.spaceId,
                             packageName = route.packageName
                         )

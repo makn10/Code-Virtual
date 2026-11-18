@@ -16,6 +16,7 @@ import com.vcameraspace.core.media.PhotoFrameProcessor
 import com.vcameraspace.core.media.RoomCameraConfigurationRepository
 import com.vcameraspace.core.media.VideoCodecFrameProcessor
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.core.media.VirtualCaptureExporter
 import com.vcameraspace.core.permissions.RuntimePermissionManager
 import com.vcameraspace.virtualengine.api.VirtualAppInstaller
 import com.vcameraspace.virtualengine.api.VirtualCameraProvider
@@ -82,6 +83,12 @@ class AppContainer(application: Application) {
         configRepository = cameraConfigRepository,
         photoProcessor = photoFrameProcessor,
         videoCodecProcessor = videoCodecFrameProcessor,
+        dispatchers = dispatchers,
+        logger = diagnosticLogger
+    )
+
+    val virtualCaptureExporter: VirtualCaptureExporter = VirtualCaptureExporter(
+        context = application,
         dispatchers = dispatchers,
         logger = diagnosticLogger
     )

@@ -79,14 +79,23 @@ fun VirtualCameraPreviewCanvas(
     useOpenGlPipeline: Boolean = true,
     mirrorHorizontal: Boolean = false,
     filterMode: GlColorFilterMode = GlColorFilterMode.STANDARD,
-    onGlTelemetry: (GlRenderTelemetry) -> Unit = {}
+    onGlTelemetry: (GlRenderTelemetry) -> Unit = {},
+    fillContainer: Boolean = false,
+    onBitmapProviderReady: ((() -> Bitmap?) -> Unit) = {}
 ) {
-    Surface(
-        modifier = modifier
+    val containerModifier = if (fillContainer) {
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(if (fillContainer) 0.dp else 18.dp))
+    } else {
+        modifier
             .fillMaxWidth()
             .height(220.dp)
-            .clip(RoundedCornerShape(18.dp)),
-        shape = RoundedCornerShape(18.dp),
+            .clip(RoundedCornerShape(18.dp))
+    }
+    Surface(
+        modifier = containerModifier,
+        shape = RoundedCornerShape(if (fillContainer) 0.dp else 18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         when (mode) {
@@ -95,7 +104,8 @@ fun VirtualCameraPreviewCanvas(
                     orientationDegrees = orientationDegrees,
                     mirrorHorizontal = mirrorHorizontal,
                     onTelemetryUpdate = onTelemetryUpdate,
-                    onError = onPlaybackError
+                    onError = onPlaybackError,
+                    onBitmapProviderReady = onBitmapProviderReady
                 )
             }
             CameraSourceMode.LOCAL_VIDEO,
@@ -103,7 +113,7 @@ fun VirtualCameraPreviewCanvas(
                 if (sourceUri.isBlank()) {
                     EmptyPreviewPlaceholder(
                         label = if (mode == CameraSourceMode.LOCAL_VIDEO) {
-                            "Choose a local video to preview"
+                            "Choose a local video in Media Section to preview"
                         } else {
                             "Enter and validate a stream URL to preview"
                         }
@@ -118,7 +128,8 @@ fun VirtualCameraPreviewCanvas(
                         filterMode = filterMode,
                         onTelemetryUpdate = onTelemetryUpdate,
                         onGlTelemetry = onGlTelemetry,
-                        onPlaybackError = onPlaybackError
+                        onPlaybackError = onPlaybackError,
+                        onBitmapProviderReady = onBitmapProviderReady
                     )
                 } else {
                     Media3VideoPreview(
@@ -134,7 +145,7 @@ fun VirtualCameraPreviewCanvas(
             }
             CameraSourceMode.LOCAL_PICTURE -> {
                 if (sourceUri.isBlank()) {
-                    EmptyPreviewPlaceholder(label = "Choose a local picture to preview")
+                    EmptyPreviewPlaceholder(label = "Choose a local picture in Media Section to preview")
                 } else if (useOpenGlPipeline) {
                     GlPicturePreview(
                         uriString = sourceUri,
@@ -143,7 +154,8 @@ fun VirtualCameraPreviewCanvas(
                         filterMode = filterMode,
                         onTelemetryUpdate = onTelemetryUpdate,
                         onGlTelemetry = onGlTelemetry,
-                        onError = onPlaybackError
+                        onError = onPlaybackError,
+                        onBitmapProviderReady = onBitmapProviderReady
                     )
                 } else {
                     Box(
@@ -180,7 +192,8 @@ private fun GlMedia3VideoPreview(
     filterMode: GlColorFilterMode,
     onTelemetryUpdate: (Double, String) -> Unit,
     onGlTelemetry: (GlRenderTelemetry) -> Unit,
-    onPlaybackError: (String) -> Unit
+    onPlaybackError: (String) -> Unit,
+    onBitmapProviderReady: ((() -> Bitmap?) -> Unit) = {}
 ) {
     val context = LocalContext.current
     var glUnavailable by remember(uriString) { mutableStateOf(false) }
@@ -254,6 +267,9 @@ private fun GlMedia3VideoPreview(
     AndroidView(
         factory = { ctx ->
             TextureView(ctx).apply {
+                onBitmapProviderReady {
+                    if (isAvailable) bitmap else null
+                }
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                     override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
                         val pipeline = EglVirtualSurfacePipeline(
@@ -310,7 +326,8 @@ private fun GlPicturePreview(
     filterMode: GlColorFilterMode,
     onTelemetryUpdate: (Double, String) -> Unit,
     onGlTelemetry: (GlRenderTelemetry) -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    onBitmapProviderReady: ((() -> Bitmap?) -> Unit) = {}
 ) {
     val context = LocalContext.current
     var glUnavailable by remember(uriString) { mutableStateOf(false) }
@@ -378,6 +395,9 @@ private fun GlPicturePreview(
     AndroidView(
         factory = { ctx ->
             TextureView(ctx).apply {
+                onBitmapProviderReady {
+                    if (isAvailable) bitmap else null
+                }
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                     override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
                         val pipeline = EglVirtualSurfacePipeline(
@@ -425,7 +445,8 @@ private fun RealCameraXPreview(
     orientationDegrees: Int,
     mirrorHorizontal: Boolean,
     onTelemetryUpdate: (Double, String) -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    onBitmapProviderReady: ((() -> Bitmap?) -> Unit) = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -478,6 +499,7 @@ private fun RealCameraXPreview(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            onBitmapProviderReady { bitmap }
         }
     }
 

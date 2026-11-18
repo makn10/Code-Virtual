@@ -207,6 +207,7 @@ fun AppIconCard(
     statusLabel: String? = null,
     hasCustomCamera: Boolean = false,
     iconPainter: Painter? = null,
+    fallbackIcon: ImageVector? = null,
     testTag: String = "app_icon_card"
 ) {
     val extended = VCameraTheme.extendedColors
@@ -240,7 +241,7 @@ fun AppIconCard(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Outlined.Android,
+                            imageVector = fallbackIcon ?: Icons.Outlined.Android,
                             contentDescription = "$appName icon",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(30.dp)
