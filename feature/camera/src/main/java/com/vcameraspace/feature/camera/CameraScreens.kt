@@ -20,12 +20,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Card
@@ -202,6 +204,10 @@ fun VirtualCameraSettingScreen(
                             enableAudio = uiState.enableAudio,
                             autoReconnect = uiState.autoReconnect,
                             orientationDegrees = uiState.orientationDegrees,
+                            useOpenGlPipeline = uiState.useOpenGlPipeline,
+                            mirrorHorizontal = uiState.mirrorHorizontal,
+                            filterMode = uiState.glColorFilterMode,
+                            onGlTelemetry = viewModel::onGlTelemetry,
                             onTelemetryUpdate = viewModel::updateMeasuredTelemetry,
                             onPlaybackError = viewModel::onPlaybackError
                         )
@@ -268,6 +274,10 @@ fun VirtualCameraSettingScreen(
                             enableAudio = uiState.enableAudio,
                             autoReconnect = uiState.autoReconnect,
                             orientationDegrees = uiState.orientationDegrees,
+                            useOpenGlPipeline = uiState.useOpenGlPipeline,
+                            mirrorHorizontal = uiState.mirrorHorizontal,
+                            filterMode = uiState.glColorFilterMode,
+                            onGlTelemetry = viewModel::onGlTelemetry,
                             onTelemetryUpdate = viewModel::updateMeasuredTelemetry,
                             onPlaybackError = viewModel::onPlaybackError
                         )
@@ -310,6 +320,10 @@ fun VirtualCameraSettingScreen(
                             enableAudio = false,
                             autoReconnect = false,
                             orientationDegrees = uiState.orientationDegrees,
+                            useOpenGlPipeline = uiState.useOpenGlPipeline,
+                            mirrorHorizontal = uiState.mirrorHorizontal,
+                            filterMode = uiState.glColorFilterMode,
+                            onGlTelemetry = viewModel::onGlTelemetry,
                             onTelemetryUpdate = viewModel::updateMeasuredTelemetry,
                             onPlaybackError = viewModel::onPlaybackError
                         )
@@ -436,7 +450,7 @@ fun CameraPreviewScreen(
                         onClick = viewModel::rotateOrientation,
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Icon(Icons.Default.RotateRight, contentDescription = "Rotate preview")
+                        Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate preview")
                         Text("${uiState.orientationDegrees}°")
                     }
                 }
@@ -457,13 +471,42 @@ fun CameraPreviewScreen(
                 enableAudio = uiState.enableAudio,
                 autoReconnect = uiState.autoReconnect,
                 orientationDegrees = uiState.orientationDegrees,
+                useOpenGlPipeline = uiState.useOpenGlPipeline,
+                mirrorHorizontal = uiState.mirrorHorizontal,
+                filterMode = uiState.glColorFilterMode,
+                onGlTelemetry = viewModel::onGlTelemetry,
                 onTelemetryUpdate = viewModel::updateMeasuredTelemetry,
                 onPlaybackError = viewModel::onPlaybackError,
                 modifier = Modifier.weight(1f)
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = viewModel::toggleMirrorHorizontal,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("preview_mirror_toggle")
+                ) {
+                    Icon(Icons.Default.Flip, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(2.dp))
+                    Text(if (uiState.mirrorHorizontal) "Mirrored" else "Mirror")
+                }
+                OutlinedButton(
+                    onClick = viewModel::cycleColorFilter,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("preview_filter_cycle")
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(2.dp))
+                    Text(uiState.glColorFilterMode.label.substringBefore(" "))
+                }
+            }
             StatusCard(
-                title = "Active Output Metrics",
-                message = "Resolution: ${uiState.effectiveResolutionLabel} • Orientation: ${uiState.orientationDegrees}° • Audio: ${if (uiState.enableAudio) "Enabled" else "Muted"}",
+                title = "OpenGL ES & Output Metrics",
+                message = buildString {
+                    append("Resolution: ${uiState.effectiveResolutionLabel} • Orientation: ${uiState.orientationDegrees}° • Mirror: ${if (uiState.mirrorHorizontal) "On" else "Off"}\n")
+                    append("Shader Filter: ${uiState.glColorFilterMode.label} • Pipeline: ${if (uiState.useOpenGlPipeline) "OpenGL ES 2.0 + SurfaceTexture" else "PlayerView Fallback"}")
+                },
                 severity = StatusSeverity.INFO
             )
             PrimaryButton(
@@ -491,8 +534,8 @@ fun CameraLabScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             CustomToolbar(
-                title = "Camera Lab",
-                subtitle = "Source Diagnostics & Test Report",
+                title = "Camera Lab — Live Assist",
+                subtitle = "OpenGL ES, MediaCodec & Camera Proxy",
                 onBackClick = onBackClick
             )
         }
@@ -518,8 +561,33 @@ fun CameraLabScreen(
                         onClick = viewModel::rotateOrientation,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.RotateRight, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = null)
                         Text("Rotate (${uiState.orientationDegrees}°)")
+                    }
+                }
+            }
+
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = viewModel::toggleMirrorHorizontal,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("camera_lab_mirror_button")
+                    ) {
+                        Icon(Icons.Default.Flip, contentDescription = null)
+                        Spacer(modifier = Modifier.padding(2.dp))
+                        Text(if (uiState.mirrorHorizontal) "Mirror: ON" else "Mirror: OFF")
+                    }
+                    OutlinedButton(
+                        onClick = viewModel::cycleColorFilter,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("camera_lab_filter_button")
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null)
+                        Spacer(modifier = Modifier.padding(2.dp))
+                        Text(uiState.glColorFilterMode.label.substringBefore(" "))
                     }
                 }
             }
@@ -532,6 +600,10 @@ fun CameraLabScreen(
                         enableAudio = uiState.enableAudio,
                         autoReconnect = uiState.autoReconnect,
                         orientationDegrees = uiState.orientationDegrees,
+                        useOpenGlPipeline = uiState.useOpenGlPipeline,
+                        mirrorHorizontal = uiState.mirrorHorizontal,
+                        filterMode = uiState.glColorFilterMode,
+                        onGlTelemetry = viewModel::onGlTelemetry,
                         onTelemetryUpdate = viewModel::updateMeasuredTelemetry,
                         onPlaybackError = viewModel::onPlaybackError
                     )
@@ -539,26 +611,70 @@ fun CameraLabScreen(
             }
 
             item {
+                PrimaryButton(
+                    text = if (uiState.isRunningProxyTest) "Running Camera1/2 Proxy Test..." else "Run Camera1/2 Proxy Frame Test",
+                    icon = Icons.Default.Science,
+                    enabled = !uiState.isRunningProxyTest,
+                    onClick = viewModel::runLiveProxyFrameTest,
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "camera_lab_proxy_test_button"
+                )
+            }
+
+            uiState.proxyTestSummary?.let { summary ->
+                item {
+                    StatusCard(
+                        title = "Camera1 / Camera2 Proxy Verification Passed",
+                        message = buildString {
+                            appendLine("Frame Geometry: ${summary.frameWidth} x ${summary.frameHeight} (CRC ${summary.yuvChecksumHex})")
+                            appendLine("Camera1 NV21 Callback Buffer: ${summary.camera1Nv21Bytes} bytes")
+                            appendLine("Camera2 ImageReader Surface Delivery: ${if (summary.camera2FrameDeliveredToSurface) "Delivered" else "Skipped (Headless)"}")
+                            append("Native JNI Bridge: ${summary.nativeBridgeStatus.label}")
+                        },
+                        severity = StatusSeverity.SUCCESS,
+                        icon = Icons.Default.Videocam
+                    )
+                }
+            }
+
+            item {
                 SectionHeader(
                     title = "Camera Lab Test Report",
-                    subtitle = "Live measured and configured parameters"
+                    subtitle = "OpenGL ES, MediaCodec & Proxy Pipeline Telemetry"
                 )
             }
 
             item {
                 StatusCard(
-                    title = "Configuration & Stream Diagnostics",
+                    title = "Configuration & Pipeline Diagnostics",
                     message = buildString {
                         appendLine("Selected Mode: ${CameraSourceRegistry.sourceFor(uiState.mode).label}")
                         appendLine("Resolution: ${uiState.effectiveResolutionLabel}")
+                        appendLine("OpenGL ES Pipeline: ${if (uiState.useOpenGlPipeline) uiState.glTelemetry.glRendererName else "Standard View"}")
+                        appendLine("Shader Transform: ${uiState.orientationDegrees}° • Mirror=${uiState.mirrorHorizontal} • ${uiState.glColorFilterMode.label}")
                         appendLine("Measured FPS: ${if (uiState.isPreviewActive && uiState.measuredFps > 0) "${uiState.measuredFps} fps" else "Idle"}")
-                        appendLine("Orientation: ${uiState.orientationDegrees}°")
+                        appendLine("Native Frame Bridge: ${uiState.nativeBridgeStatusLabel}")
                         appendLine("Audio Preference: ${if (uiState.enableAudio) "Enabled (Preview Playback)" else "Muted"}")
                         append("Network Status: ${uiState.streamValidation?.statusText ?: "Not probed"}")
                     },
                     severity = StatusSeverity.INFO,
                     icon = Icons.Default.Science
                 )
+            }
+
+            if (uiState.proxyEvents.isNotEmpty()) {
+                item {
+                    SectionHeader(
+                        title = "Intercepted Sandbox Camera Requests",
+                        subtitle = "Camera1 & Camera2 calls routed inside VCamera Space"
+                    )
+                }
+                items(uiState.proxyEvents) { event ->
+                    Text(
+                        text = "#${event.sequence} [${event.apiKind.name}] ${event.methodCall} — ${event.detail}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             item {
@@ -571,7 +687,7 @@ fun CameraLabScreen(
             if (uiState.diagnosticLogs.isEmpty()) {
                 item {
                     Text(
-                        text = "No diagnostic events logged yet. Start preview or validate a source.",
+                        text = "No diagnostic events logged yet. Start preview, run proxy test, or validate a source.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -149,6 +149,20 @@ fun SplashContent(
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    androidx.compose.material3.Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                    ) {
+                        Text(
+                            text = "LIVE ASSIST",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }

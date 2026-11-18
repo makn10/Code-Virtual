@@ -137,7 +137,7 @@ fun CompatibilityStatusScreen(
                 item {
                     SectionHeader(
                         title = "Target Application Assessments",
-                        subtitle = "WhatsApp, Facebook Messenger & imo"
+                        subtitle = "WhatsApp, Messenger, Instagram, Zoom & imo"
                     )
                 }
 

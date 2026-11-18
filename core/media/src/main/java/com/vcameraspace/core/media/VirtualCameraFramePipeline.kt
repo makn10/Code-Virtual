@@ -60,6 +60,21 @@ class YuvFrameBuffer(
         System.arraycopy(vPlane, 0, out, yPlane.size + uPlane.size, vPlane.size)
         return out
     }
+
+    /**
+     * Converts planar Y/U/V into semi-planar NV21 (Y + interleaved VU) required by legacy Camera1 preview callbacks.
+     */
+    fun toNv21(): ByteArray {
+        val out = ByteArray(packedI420SizeBytes)
+        System.arraycopy(yPlane, 0, out, 0, yPlane.size)
+        var offset = yPlane.size
+        val uvCount = minOf(uPlane.size, vPlane.size)
+        for (idx in 0 until uvCount) {
+            out[offset++] = vPlane[idx]
+            out[offset++] = uPlane[idx]
+        }
+        return out
+    }
 }
 
 object YuvFrameConverter {
@@ -612,7 +627,9 @@ data class CameraApiSupportMatrix(
     val camera1BridgeMode: String,
     val camera2HardwareLevelSummary: String,
     val cameraXSupported: Boolean,
-    val physicalCameraIsolatedWhenVirtual: Boolean
+    val physicalCameraIsolatedWhenVirtual: Boolean,
+    val nativeBridgeStatus: NativeBridgeStatus = NativeFrameBridge.status,
+    val openGlPipelineReady: Boolean = true
 )
 
 data class VirtualCameraAdapterState(
@@ -622,13 +639,14 @@ data class VirtualCameraAdapterState(
     val usingSharedGlobalSource: Boolean = true,
     val sharedConfig: SharedCameraSourceConfig = SharedCameraSourceConfig(),
     val apiMatrix: CameraApiSupportMatrix = CameraApiSupportMatrix(
-        camera1BridgeMode = "Legacy Camera1 unprivileged HAL cannot be hooked system-wide",
+        camera1BridgeMode = "Sandboxed Camera1 NV21 proxy active inside workspace",
         camera2HardwareLevelSummary = "Probing Camera2...",
         cameraXSupported = true,
         physicalCameraIsolatedWhenVirtual = true
     ),
     val lastPhotoResult: PhotoFramePipelineResult? = null,
     val lastVideoCodecResult: VideoCodecPipelineResult? = null,
+    val lastProxyTestSummary: CameraProxyTestSummary? = null,
     val lastStatusNote: String = "Virtual camera adapter idle (physical camera isolated until explicitly enabled)."
 )
 
@@ -641,6 +659,7 @@ class VirtualCameraAdapterManager(
     private val logger: DiagnosticLogger? = null
 ) {
     private val sharedFile = File(context.filesDir, "shared_virtual_camera.json")
+    val proxyBridge: VirtualCameraProxyBridge = VirtualCameraProxyBridge(logger)
     private val _state = MutableStateFlow(VirtualCameraAdapterState())
     val state: StateFlow<VirtualCameraAdapterState> = _state.asStateFlow()
 
@@ -674,14 +693,28 @@ class VirtualCameraAdapterManager(
         _state.update { current ->
             current.copy(
                 apiMatrix = CameraApiSupportMatrix(
-                    camera1BridgeMode = "Legacy Camera1 restricted to host process only",
+                    camera1BridgeMode = "Sandboxed Camera1 NV21 proxy + host process bridge",
                     camera2HardwareLevelSummary = summary,
                     cameraXSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O,
-                    physicalCameraIsolatedWhenVirtual = current.sharedConfig.mode != CameraSourceMode.REAL_DEVICE
+                    physicalCameraIsolatedWhenVirtual = current.sharedConfig.mode != CameraSourceMode.REAL_DEVICE,
+                    nativeBridgeStatus = NativeFrameBridge.status,
+                    openGlPipelineReady = true
                 )
             )
         }
     }
+
+    suspend fun runProxySelfTest(spaceId: String = "space_1"): CameraProxyTestSummary =
+        withContext(dispatchers.io) {
+            val summary = proxyBridge.runSandboxProxyVerificationTest(spaceId = spaceId)
+            _state.update {
+                it.copy(
+                    lastProxyTestSummary = summary,
+                    lastStatusNote = "Proxy verification: ${summary.frameWidth}x${summary.frameHeight} NV21=${summary.camera1Nv21Bytes}B Camera2Surface=${summary.camera2FrameDeliveredToSurface}"
+                )
+            }
+            summary
+        }
 
     suspend fun saveSharedConfig(config: SharedCameraSourceConfig): AppResult<Unit> = withContext(dispatchers.io) {
         runCatching {

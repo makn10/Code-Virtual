@@ -76,6 +76,18 @@ class CompatibilityAssessmentEngine(
                 packageName = "com.imo.android.imoim",
                 displayName = "imo-International Calls & Chat",
                 note = "Proprietary native VoIP/video transport with tight device-bound codecs and NDK verification. APK archive inspection & Workspace catalog registration work; device-level video call camera replacement and dual-instance isolation are not verified on hardware."
+            ),
+            assessTargetApp(
+                pm = pm,
+                packageName = "com.instagram.android",
+                displayName = "Instagram",
+                note = "Uses certificate pinning, Camera2/MediaCodec hardware capture pipelines, and Meta process isolation. App cloning alone cannot replace Instagram's live camera stream without privileged OS/system integration."
+            ),
+            assessTargetApp(
+                pm = pm,
+                packageName = "us.zoom.videomeetings",
+                displayName = "Zoom Workplace",
+                note = "Relies on native NDK video conferencing SDKs and strict Android 16 Camera2/microphone permissions. Workspace registration & launch inspection work; live call camera feed replacement is not supported via unprivileged cloning."
             )
         )
 

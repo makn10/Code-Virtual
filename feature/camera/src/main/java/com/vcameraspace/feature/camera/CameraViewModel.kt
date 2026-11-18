@@ -8,12 +8,18 @@ import com.vcameraspace.core.common.coroutines.DispatcherProvider
 import com.vcameraspace.core.common.model.AppResult
 import com.vcameraspace.core.media.CameraConfigurationRecord
 import com.vcameraspace.core.media.CameraConfigurationRepository
+import com.vcameraspace.core.media.CameraProxyInterceptEvent
+import com.vcameraspace.core.media.CameraProxyTestSummary
 import com.vcameraspace.core.media.CameraSourceRegistry
+import com.vcameraspace.core.media.GlColorFilterMode
+import com.vcameraspace.core.media.GlRenderTelemetry
 import com.vcameraspace.core.media.LocalPictureMetadata
 import com.vcameraspace.core.media.LocalVideoMetadata
 import com.vcameraspace.core.media.MediaInspector
+import com.vcameraspace.core.media.NativeFrameBridge
 import com.vcameraspace.core.media.SharedCameraSourceConfig
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.core.media.VirtualCameraProxyBridge
 import com.vcameraspace.core.media.YuvFrameFormat
 import com.vcameraspace.core.security.StreamProtocol
 import com.vcameraspace.core.security.UrlSecurityValidator
@@ -53,6 +59,14 @@ data class CameraSettingsUiState(
     val isPreviewActive: Boolean = false,
     val measuredFps: Double = 0.0,
     val measuredResolution: String = "Auto",
+    val useOpenGlPipeline: Boolean = true,
+    val mirrorHorizontal: Boolean = false,
+    val glColorFilterMode: GlColorFilterMode = GlColorFilterMode.STANDARD,
+    val glTelemetry: GlRenderTelemetry = GlRenderTelemetry(),
+    val isRunningProxyTest: Boolean = false,
+    val proxyTestSummary: CameraProxyTestSummary? = null,
+    val proxyEvents: List<CameraProxyInterceptEvent> = emptyList(),
+    val nativeBridgeStatusLabel: String = NativeFrameBridge.status.label,
     val diagnosticLogs: List<String> = emptyList(),
     val feedbackMessage: String? = null,
     val errorMessage: String? = null
@@ -217,6 +231,57 @@ class CameraViewModel(
         _uiState.update {
             val next = (it.orientationDegrees + 90) % 360
             it.copy(orientationDegrees = next)
+        }
+        appendLog("GL orientation set to ${_uiState.value.orientationDegrees}°")
+    }
+
+    fun toggleMirrorHorizontal() {
+        _uiState.update { it.copy(mirrorHorizontal = !it.mirrorHorizontal) }
+        appendLog("GL horizontal mirror: ${_uiState.value.mirrorHorizontal}")
+    }
+
+    fun cycleColorFilter() {
+        val entries = GlColorFilterMode.entries
+        _uiState.update { current ->
+            val nextIdx = (entries.indexOf(current.glColorFilterMode) + 1) % entries.size
+            current.copy(glColorFilterMode = entries[nextIdx])
+        }
+        appendLog("GL shader filter: ${_uiState.value.glColorFilterMode.label}")
+    }
+
+    fun toggleOpenGlPipeline() {
+        _uiState.update { it.copy(useOpenGlPipeline = !it.useOpenGlPipeline) }
+        appendLog("OpenGL ES SurfaceTexture pipeline: ${if (_uiState.value.useOpenGlPipeline) "Enabled" else "Fallback View"}")
+    }
+
+    fun onGlTelemetry(telemetry: GlRenderTelemetry) {
+        _uiState.update {
+            it.copy(
+                glTelemetry = telemetry,
+                measuredFps = if (telemetry.measuredFps > 0.0) telemetry.measuredFps else it.measuredFps
+            )
+        }
+    }
+
+    fun runLiveProxyFrameTest() {
+        if (_uiState.value.isRunningProxyTest) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRunningProxyTest = true, errorMessage = null) }
+            val summary = withContext(dispatchers.io) {
+                adapterManager?.runProxySelfTest(spaceId)
+                    ?: VirtualCameraProxyBridge().runSandboxProxyVerificationTest(spaceId)
+            }
+            _uiState.update {
+                it.copy(
+                    isRunningProxyTest = false,
+                    proxyTestSummary = summary,
+                    proxyEvents = summary.interceptedEvents,
+                    feedbackMessage = "Proxy self-test passed (${summary.frameWidth}x${summary.frameHeight}, NV21=${summary.camera1Nv21Bytes}B)"
+                )
+            }
+            appendLog(
+                "Proxy test: ${summary.frameWidth}x${summary.frameHeight} NV21=${summary.camera1Nv21Bytes}B Camera2Surface=${summary.camera2FrameDeliveredToSurface} CRC=${summary.yuvChecksumHex}"
+            )
         }
     }
 

@@ -232,6 +232,11 @@ fun HomeContent(
                                     fontWeight = FontWeight.Bold
                                 )
                             )
+                            Text(
+                                text = "Live Assist",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                         Spacer(modifier = Modifier.width(2.dp))
                         Surface(

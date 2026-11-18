@@ -65,7 +65,7 @@ fun AboutScreen(
                     VCameraLogo(size = 80.dp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "VCamera Space",
+                        text = "VCamera Space – Live Assist",
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
@@ -78,8 +78,8 @@ fun AboutScreen(
 
             item {
                 StatusCard(
-                    title = "Architecture & Capability Transparency",
-                    message = "VCamera Space organizes supported Android applications across isolated workspace profiles, manages scoped per-space directories, provides CameraX and Media3 virtual camera previews inside supported integrations, and enforces Android security boundaries.",
+                    title = "Central Architecture (Live Assist)",
+                    message = "1. VCamera Space – Main Application\n2. Virtual Environment / User-Space Sandbox\n3. Virtual App Management & Camera1/2 Proxy Layer\n4. Virtual Media Processing Engine (YUV420 / NV21)\n5. MediaCodec + SurfaceTexture + OpenGL ES 2.0\n6. Virtual Preview & Supported Media Output",
                     severity = StatusSeverity.INFO,
                     icon = Icons.Default.Info
                 )
@@ -88,7 +88,7 @@ fun AboutScreen(
             item {
                 StatusCard(
                     title = "Android Platform Constraints",
-                    message = "• No universal Camera1/2/X interception of unrelated apps without a privileged environment or explicit integration.\n• Video audio playback does not inject into unrelated app microphones.\n• Mock location publishing requires explicit Android Developer Options approval.",
+                    message = "• Android does not provide a universal public API for replacing the physical camera feed inside arbitrary third-party apps.\n• Compatibility with WhatsApp, Messenger, Instagram, Zoom, and other external apps cannot be guaranteed through app cloning alone.\n• Video audio playback does not inject into unrelated app microphones, and mock locations require Android Developer Options approval.",
                     severity = StatusSeverity.WARNING,
                     icon = Icons.Default.Shield
                 )

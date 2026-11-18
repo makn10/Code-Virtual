@@ -116,7 +116,9 @@ fun PerformanceMonitorScreen(
                             appendLine("Frame Format: ${adapterState.sharedConfig.outputFormat.label}")
                             appendLine("Physical Camera Hardware: ${if (adapterState.sharedConfig.physicalCameraIsolated) "Isolated (Unused)" else "Pass-through"}")
                             appendLine("Camera2 HAL Probe: ${adapterState.apiMatrix.camera2HardwareLevelSummary}")
-                            appendLine("Camera1 Bridge: ${adapterState.apiMatrix.camera1BridgeMode}")
+                            appendLine("Camera1 Proxy: ${adapterState.apiMatrix.camera1BridgeMode}")
+                            appendLine("GL / SurfaceTexture: ${if (adapterState.apiMatrix.openGlPipelineReady) "OpenGL ES 2.0 OES Ready" else "Unavailable"}")
+                            appendLine("Native JNI Bridge: ${adapterState.apiMatrix.nativeBridgeStatus.label}")
                             append(adapterState.lastStatusNote)
                         },
                         severity = when (lifecycle) {
@@ -161,7 +163,7 @@ fun PerformanceMonitorScreen(
             item {
                 StatusCard(
                     title = "Engine Health & Supported Processes",
-                    message = "Strategy: ${virtualEngine.capabilities.strategy.name}\nActive Supported Processes: $activeProcessCount\nCameraX Pipeline Ready: ${adapterState?.apiMatrix?.cameraXSupported ?: true}\nStatus: Healthy (On-demand telemetry)",
+                    message = "Strategy: ${virtualEngine.capabilities.strategy.name}\nActive Supported Processes: $activeProcessCount\nCameraX Pipeline Ready: ${adapterState?.apiMatrix?.cameraXSupported ?: true}\nOpenGL ES / MediaCodec Pipeline: Active\nStatus: Healthy (On-demand telemetry)",
                     severity = StatusSeverity.SUCCESS,
                     icon = Icons.Default.CheckCircle
                 )

@@ -23,14 +23,19 @@ import com.vcameraspace.core.common.model.VirtualAppStatus
 import com.vcameraspace.core.database.VCameraDatabase
 import com.vcameraspace.core.database.entity.ImportedApkEntity
 import com.vcameraspace.core.database.repository.RoomSpaceRepository
+import com.vcameraspace.core.media.GlColorFilterMode
+import com.vcameraspace.core.media.GlTransformMatrixMath
 import com.vcameraspace.core.media.MediaInspector
+import com.vcameraspace.core.media.NativeFrameBridge
 import com.vcameraspace.core.media.PhotoFrameProcessor
 import com.vcameraspace.core.media.RoomCameraConfigurationRepository
 import com.vcameraspace.core.media.SharedCameraSourceConfig
 import com.vcameraspace.core.media.VideoCodecFrameProcessor
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
+import com.vcameraspace.core.media.VirtualCameraProxyBridge
 import com.vcameraspace.core.media.YuvFrameConverter
 import com.vcameraspace.core.media.YuvFrameFormat
+import com.vcameraspace.feature.camera.CameraLabScreen
 import com.vcameraspace.feature.camera.CameraViewModel
 import com.vcameraspace.feature.camera.PhotoSourceScreen
 import com.vcameraspace.feature.camera.VideoSourceScreen
@@ -102,6 +107,42 @@ class Phase2CoreUnitTests {
         assertFalse(logged.message.contains("secretPass"))
         assertFalse(logged.message.contains("mySecretToken"))
         assertTrue(logged.message.contains("https://***:***@cam.local"))
+    }
+
+    @Test
+    fun `gl transform matrix math and nv21 conversion support live assist pipeline`() {
+        val nv21 = YuvFrameConverter.argbToYuv420(
+            argbPixels = IntArray(8 * 6) { 0xFF2080C0.toInt() },
+            width = 8,
+            height = 6
+        ).toNv21()
+        assertEquals(8 * 6 * 3 / 2, nv21.size)
+
+        val identityFit = GlTransformMatrixMath.buildVertexTransformMatrix(
+            rotationDegrees = 0,
+            mirrorHorizontal = false,
+            sourceWidth = 1280,
+            sourceHeight = 720,
+            viewportWidth = 1280,
+            viewportHeight = 720
+        )
+        assertEquals(1f, identityFit[0], 0.001f)
+        assertEquals(1f, identityFit[5], 0.001f)
+
+        val mirroredRotated = GlTransformMatrixMath.buildVertexTransformMatrix(
+            rotationDegrees = 90,
+            mirrorHorizontal = true,
+            sourceWidth = 1280,
+            sourceHeight = 720,
+            viewportWidth = 1280,
+            viewportHeight = 720
+        )
+        assertEquals(16, mirroredRotated.size)
+        // At 90 degrees rotation, diagonal cosine component ~ 0 and sine component non-zero
+        assertEquals(0f, mirroredRotated[0], 0.001f)
+        assertTrue(mirroredRotated[1] != 0f)
+        assertTrue(GlColorFilterMode.entries.size >= 3)
+        assertNotNull(NativeFrameBridge.supportedAbisLabel)
     }
 }
 
@@ -261,6 +302,13 @@ class Phase2EngineAndMigrationTests {
         val startRes = adapter.startVirtualSession("space_2", "com.whatsapp")
         assertTrue(startRes is AppResult.Success)
         assertNotNull(adapter.state.value.lastStatusNote)
+
+        val proxySummary = adapter.runProxySelfTest("space_1")
+        assertEquals(320, proxySummary.frameWidth)
+        assertEquals(240, proxySummary.frameHeight)
+        assertEquals(320 * 240 * 3 / 2, proxySummary.camera1Nv21Bytes)
+        assertTrue(proxySummary.interceptedEvents.isNotEmpty())
+
         adapter.stopVirtualSession()
     }
 }
@@ -394,6 +442,37 @@ class Phase3ScreenUiTests {
         composeRule.onNodeWithTag("video_source_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("video_source_pick_button").assertIsDisplayed()
         assertNotNull(compatEngine)
+        db.close()
+    }
+
+    @Test
+    fun `camera lab live assist renders mirror filter and proxy test controls`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = VCameraDatabase.createInMemory(context)
+        val dispatchers = DirectPhaseDispatcher()
+        val configRepo = RoomCameraConfigurationRepository(db.cameraConfigDao(), dispatchers)
+        val mediaInspector = MediaInspector(context, dispatchers)
+        val logger = DiagnosticLogger()
+        val adapter = VirtualCameraAdapterManager(
+            context,
+            configRepo,
+            PhotoFrameProcessor(context, dispatchers, logger),
+            VideoCodecFrameProcessor(context, dispatchers, logger),
+            dispatchers,
+            logger
+        )
+        val camVm = CameraViewModel("space_1", null, configRepo, mediaInspector, dispatchers, adapter)
+
+        composeRule.setContent {
+            VCameraAppTheme {
+                CameraLabScreen(viewModel = camVm, onBackClick = {})
+            }
+        }
+        composeRule.onNodeWithTag("camera_lab_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("camera_lab_mirror_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("camera_lab_filter_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("camera_lab_proxy_test_button").assertIsDisplayed()
+        assertNotNull(VirtualCameraProxyBridge(logger))
         db.close()
     }
 }

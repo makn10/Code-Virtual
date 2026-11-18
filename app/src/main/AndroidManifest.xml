@@ -36,6 +36,8 @@
         <package android:name="com.whatsapp" />
         <package android:name="com.facebook.orca" />
         <package android:name="com.imo.android.imoim" />
+        <package android:name="com.instagram.android" />
+        <package android:name="us.zoom.videomeetings" />
     </queries>
 
     <application

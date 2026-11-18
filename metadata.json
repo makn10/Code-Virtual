@@ -1,6 +1,6 @@
 {
-  "name": "VCamera Space",
-  "description": "Multi-space application management and virtual camera configuration platform for Android.",
+  "name": "VCamera Space – Live Assist",
+  "description": "Rootless Android virtual workspace, app cloning, OpenGL ES/SurfaceTexture/MediaCodec frame pipeline, and sandboxed virtual camera Live Assist platform.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

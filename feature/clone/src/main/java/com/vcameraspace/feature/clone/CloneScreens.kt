@@ -20,12 +20,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.WarningAmber
@@ -591,7 +591,7 @@ fun AppInformationScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PrimaryButton(
                             text = "Open App",
-                            icon = Icons.Default.OpenInNew,
+                            icon = Icons.AutoMirrored.Filled.OpenInNew,
                             onClick = viewModel::launchApp,
                             modifier = Modifier.weight(1f)
                         )

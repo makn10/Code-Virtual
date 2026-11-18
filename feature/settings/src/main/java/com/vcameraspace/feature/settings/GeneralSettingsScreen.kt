@@ -148,7 +148,7 @@ fun GeneralSettingsScreen(
             if (onOpenCompatibilityStatus != null) {
                 item {
                     OutlinedButton(onClick = onOpenCompatibilityStatus, modifier = Modifier.fillMaxWidth()) {
-                        Text("Compatibility Status (WhatsApp / Messenger / imo)")
+                        Text("Compatibility Status (Target Apps & Engines)")
                     }
                 }
             }
