@@ -66,6 +66,7 @@ import com.vcameraspace.core.designsystem.components.StatusCard
 import com.vcameraspace.core.designsystem.components.StatusSeverity
 import com.vcameraspace.core.media.PhotoFramePipelineResult
 import com.vcameraspace.core.media.SharedCameraSourceConfig
+import com.vcameraspace.core.media.SurfaceFrameExtractionResult
 import com.vcameraspace.core.media.VideoCodecPipelineResult
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
 import com.vcameraspace.core.media.YuvFrameFormat
@@ -329,7 +330,9 @@ fun VideoSourceScreen(
         mutableStateOf(adapterState.sharedConfig.outputFormat)
     }
     var isDecoding by remember { mutableStateOf(false) }
+    var isExtractingSurface by remember { mutableStateOf(false) }
     var codecResult by remember { mutableStateOf<VideoCodecPipelineResult?>(null) }
+    var surfaceResult by remember { mutableStateOf<SurfaceFrameExtractionResult?>(null) }
 
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -372,7 +375,8 @@ fun VideoSourceScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .widthIn(max = 680.dp),
+                .widthIn(max = 680.dp)
+                .testTag("video_source_lazy_list"),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -422,7 +426,7 @@ fun VideoSourceScreen(
 
                 item {
                     OutlinedButton(
-                        enabled = !isDecoding,
+                        enabled = !isDecoding && !isExtractingSurface,
                         onClick = {
                             coroutineScope.launch {
                                 isDecoding = true
@@ -446,12 +450,44 @@ fun VideoSourceScreen(
                         Text(if (isDecoding) "Decoding via MediaCodec..." else "Run MediaCodec Frame Decode Probe")
                     }
                 }
+
+                item {
+                    OutlinedButton(
+                        enabled = !isExtractingSurface && !isDecoding,
+                        onClick = {
+                            coroutineScope.launch {
+                                isExtractingSurface = true
+                                when (val res = adapterManager.runSurfaceFrameExtraction(
+                                    uriString = uiState.sourceUri,
+                                    maxSampleFrames = 12
+                                )) {
+                                    is AppResult.Success -> surfaceResult = res.data
+                                    is AppResult.Failure -> snackbarHostState.showSnackbar(res.error.message)
+                                }
+                                isExtractingSurface = false
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("video_run_surface_extractor_button")
+                    ) {
+                        Icon(Icons.Default.Science, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isExtractingSurface) "Extracting Frames to Surface..." else "Extract Video Frames to Surface")
+                    }
+                }
             }
 
-            if (isDecoding) {
+            if (isDecoding || isExtractingSurface) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        LoadingIndicator(label = "Extracting track & decoding YUV frames via MediaCodec...")
+                        LoadingIndicator(
+                            label = if (isExtractingSurface) {
+                                "Rendering decoded MediaCodec frames onto target Surface..."
+                            } else {
+                                "Extracting track & decoding YUV frames via MediaCodec..."
+                            }
+                        )
                     }
                 }
             }
@@ -466,6 +502,24 @@ fun VideoSourceScreen(
                             appendLine("Sample Frames Decoded: ${result.decodedFrameCount} (${String.format("%.1f", result.estimatedFps)} fps)")
                             appendLine("Avg Presentation Delta: ${String.format("%.2f", result.averageFrameDeltaMs)} ms")
                             appendLine("YUV Frame Size (${result.outputFormat.name}): ${result.yuvFrameBytes} bytes")
+                            append("Processing Time: ${result.processingDurationMs} ms")
+                        },
+                        severity = StatusSeverity.SUCCESS,
+                        icon = Icons.Default.CheckCircle
+                    )
+                }
+            }
+
+            surfaceResult?.let { result ->
+                item {
+                    StatusCard(
+                        title = "Surface Frame Extraction Verified (${result.codecName})",
+                        message = buildString {
+                            appendLine("Track MIME: ${result.mimeType}")
+                            appendLine("Surface Resolution: ${result.width} x ${result.height}")
+                            appendLine("Rendered Frames to Surface: ${result.renderedFramesToSurface} (Acquired=${result.surfaceAcquireCount})")
+                            appendLine("Estimated Frame Rate: ${String.format("%.1f", result.estimatedFps)} fps (${String.format("%.2f", result.averageFrameDeltaMs)} ms delta)")
+                            appendLine("Target Surface Valid: ${result.targetSurfaceValid} • Last PTS=${result.lastPresentationTimeUs}us")
                             append("Processing Time: ${result.processingDurationMs} ms")
                         },
                         severity = StatusSeverity.SUCCESS,

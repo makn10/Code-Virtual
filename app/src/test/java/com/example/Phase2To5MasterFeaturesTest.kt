@@ -4,9 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -23,6 +25,7 @@ import com.vcameraspace.core.common.model.VirtualAppStatus
 import com.vcameraspace.core.database.VCameraDatabase
 import com.vcameraspace.core.database.entity.ImportedApkEntity
 import com.vcameraspace.core.database.repository.RoomSpaceRepository
+import com.vcameraspace.core.media.CameraConfigurationRecord
 import com.vcameraspace.core.media.GlColorFilterMode
 import com.vcameraspace.core.media.GlTransformMatrixMath
 import com.vcameraspace.core.media.MediaInspector
@@ -30,6 +33,7 @@ import com.vcameraspace.core.media.NativeFrameBridge
 import com.vcameraspace.core.media.PhotoFrameProcessor
 import com.vcameraspace.core.media.RoomCameraConfigurationRepository
 import com.vcameraspace.core.media.SharedCameraSourceConfig
+import com.vcameraspace.core.media.SurfaceFrameExtractionResult
 import com.vcameraspace.core.media.VideoCodecFrameProcessor
 import com.vcameraspace.core.media.VirtualCameraAdapterManager
 import com.vcameraspace.core.media.VirtualCameraProxyBridge
@@ -58,6 +62,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -309,6 +314,26 @@ class Phase2EngineAndMigrationTests {
         assertEquals(320 * 240 * 3 / 2, proxySummary.camera1Nv21Bytes)
         assertTrue(proxySummary.interceptedEvents.isNotEmpty())
 
+        val missingSurfaceRes = adapter.runSurfaceFrameExtraction("")
+        assertTrue(missingSurfaceRes is AppResult.Failure)
+
+        val sampleSurfaceResult = SurfaceFrameExtractionResult(
+            sourceUri = "content://demo/video.mp4",
+            mimeType = "video/avc",
+            codecName = "c2.android.avc.decoder",
+            width = 1280,
+            height = 720,
+            renderedFramesToSurface = 12,
+            surfaceAcquireCount = 12,
+            targetSurfaceValid = true,
+            averageFrameDeltaMs = 33.3,
+            estimatedFps = 30.0,
+            lastPresentationTimeUs = 366_300L,
+            processingDurationMs = 45L
+        )
+        assertEquals(12, sampleSurfaceResult.renderedFramesToSurface)
+        assertTrue(sampleSurfaceResult.targetSurfaceValid)
+
         adapter.stopVirtualSession()
     }
 }
@@ -431,6 +456,22 @@ class Phase3ScreenUiTests {
             dispatchers,
             logger
         )
+        runBlocking {
+            configRepo.saveConfig(
+                CameraConfigurationRecord(
+                    spaceId = "space_1",
+                    packageName = null,
+                    mode = CameraSourceMode.LOCAL_VIDEO,
+                    sourceUri = "https://cdn.example.com/sample.mp4",
+                    enableAudio = false,
+                    width = 0,
+                    height = 0,
+                    orientationDegrees = 0,
+                    autoReconnect = true,
+                    updatedAtEpochMs = 1_000L
+                )
+            )
+        }
         val camVm = CameraViewModel("space_1", null, configRepo, mediaInspector, dispatchers, adapter)
         val compatEngine = CompatibilityAssessmentEngine(context, dispatchers, logger)
 
@@ -439,8 +480,18 @@ class Phase3ScreenUiTests {
                 VideoSourceScreen(viewModel = camVm, adapterManager = adapter, onBackClick = {})
             }
         }
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            camVm.uiState.value.sourceUri.isNotBlank()
+        }
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("video_source_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("video_source_pick_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("video_source_lazy_list")
+            .performScrollToNode(hasTestTag("video_run_mediacodec_button"))
+        composeRule.onNodeWithTag("video_run_mediacodec_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("video_source_lazy_list")
+            .performScrollToNode(hasTestTag("video_run_surface_extractor_button"))
+        composeRule.onNodeWithTag("video_run_surface_extractor_button").assertIsDisplayed()
         assertNotNull(compatEngine)
         db.close()
     }

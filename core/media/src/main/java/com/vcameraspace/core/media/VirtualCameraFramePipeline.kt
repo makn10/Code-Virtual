@@ -4,15 +4,18 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.graphics.PixelFormat
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.Image
+import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
+import android.view.Surface
 import com.vcameraspace.core.common.coroutines.DispatcherProvider
 import com.vcameraspace.core.common.diagnostics.DiagnosticCategory
 import com.vcameraspace.core.common.diagnostics.DiagnosticLogger
@@ -601,7 +604,201 @@ class VideoCodecFrameProcessor(
             runCatching { extractor?.release() }
         }
     }
+
+    /**
+     * Hardware/software [MediaExtractor] + [MediaCodec] Video-to-[Surface] frame extractor.
+     * Configures MediaCodec directly against a target [Surface] (or an internal [ImageReader]
+     * RGBA_8888 surface when none is supplied) and releases decoded frames via render=true.
+     */
+    suspend fun extractVideoFramesToSurface(
+        uriString: String,
+        targetSurface: Surface? = null,
+        maxSampleFrames: Int = 12,
+        onFrameRendered: ((frameIndex: Int, presentationTimeUs: Long, width: Int, height: Int) -> Unit)? = null
+    ): AppResult<SurfaceFrameExtractionResult> = withContext(dispatchers.io) {
+        val startedAt = System.currentTimeMillis()
+        var extractor: MediaExtractor? = null
+        var codec: MediaCodec? = null
+        var ownedReader: ImageReader? = null
+        var acquiredCount = 0
+        try {
+            if (uriString.isBlank()) {
+                error("Video URI is blank.")
+            }
+            val uri = Uri.parse(uriString)
+            extractor = MediaExtractor().apply {
+                setDataSource(context, uri, null)
+            }
+
+            var videoTrackIndex = -1
+            var videoFormat: MediaFormat? = null
+            for (i in 0 until extractor.trackCount) {
+                val fmt = extractor.getTrackFormat(i)
+                val mime = fmt.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("video/")) {
+                    videoTrackIndex = i
+                    videoFormat = fmt
+                    break
+                }
+            }
+            if (videoTrackIndex < 0 || videoFormat == null) {
+                error("No decodable video/* track found inside selected media.")
+            }
+
+            val mime = videoFormat.getString(MediaFormat.KEY_MIME) ?: "video/avc"
+            val declaredWidth = if (videoFormat.containsKey(MediaFormat.KEY_WIDTH)) videoFormat.getInteger(MediaFormat.KEY_WIDTH) else 1280
+            val declaredHeight = if (videoFormat.containsKey(MediaFormat.KEY_HEIGHT)) videoFormat.getInteger(MediaFormat.KEY_HEIGHT) else 720
+            val (evenW, evenH) = YuvFrameConverter.computeEvenDimensions(declaredWidth, declaredHeight)
+
+            val activeSurface: Surface = if (targetSurface != null && targetSurface.isValid) {
+                targetSurface
+            } else {
+                val reader = ImageReader.newInstance(evenW, evenH, PixelFormat.RGBA_8888, 3)
+                ownedReader = reader
+                reader.surface
+            }
+
+            extractor.selectTrack(videoTrackIndex)
+            codec = MediaCodec.createDecoderByType(mime).apply {
+                configure(videoFormat, activeSurface, null, 0)
+                start()
+            }
+
+            val codecName = codec.name
+            val bufferInfo = MediaCodec.BufferInfo()
+            var inputDone = false
+            var outputDone = false
+            var renderedFrames = 0
+            var outputW = evenW
+            var outputH = evenH
+            var firstPtsUs: Long? = null
+            var lastPtsUs = 0L
+            var totalPtsDeltaUs = 0L
+            val timeoutDeadlineMs = startedAt + 6_000L
+
+            while (!outputDone && renderedFrames < maxSampleFrames && System.currentTimeMillis() < timeoutDeadlineMs) {
+                if (!inputDone) {
+                    val inIdx = codec.dequeueInputBuffer(10_000L)
+                    if (inIdx >= 0) {
+                        val inBuf = codec.getInputBuffer(inIdx)
+                        if (inBuf != null) {
+                            val sampleSize = extractor.readSampleData(inBuf, 0)
+                            if (sampleSize < 0) {
+                                codec.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputDone = true
+                            } else {
+                                codec.queueInputBuffer(inIdx, 0, sampleSize, extractor.sampleTime, 0)
+                                extractor.advance()
+                            }
+                        }
+                    }
+                }
+
+                val outIdx = codec.dequeueOutputBuffer(bufferInfo, 10_000L)
+                when {
+                    outIdx == MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val outFmt = codec.outputFormat
+                        outputW = outFmt.getInteger(MediaFormat.KEY_WIDTH)
+                        outputH = outFmt.getInteger(MediaFormat.KEY_HEIGHT)
+                    }
+                    outIdx >= 0 -> {
+                        val isCodecConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                        val renderToSurface = !isCodecConfig && bufferInfo.size > 0 && activeSurface.isValid
+                        codec.releaseOutputBuffer(outIdx, renderToSurface)
+                        if (renderToSurface) {
+                            if (firstPtsUs == null) {
+                                firstPtsUs = bufferInfo.presentationTimeUs
+                            } else if (bufferInfo.presentationTimeUs > lastPtsUs) {
+                                totalPtsDeltaUs += (bufferInfo.presentationTimeUs - lastPtsUs)
+                            }
+                            lastPtsUs = bufferInfo.presentationTimeUs
+                            renderedFrames++
+                            onFrameRendered?.invoke(renderedFrames, lastPtsUs, outputW, outputH)
+                            ownedReader?.let { reader ->
+                                runCatching {
+                                    reader.acquireLatestImage()?.use {
+                                        acquiredCount++
+                                    }
+                                }
+                            }
+                        }
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            outputDone = true
+                        }
+                    }
+                }
+            }
+
+            if (renderedFrames == 0) {
+                error("MediaCodec Surface extractor produced zero rendered frames for $mime.")
+            }
+
+            val intervals = (renderedFrames - 1).coerceAtLeast(1)
+            val avgDeltaUs = if (renderedFrames > 1 && totalPtsDeltaUs > 0L) {
+                totalPtsDeltaUs.toDouble() / intervals
+            } else {
+                33_333.3
+            }
+            val avgDeltaMs = avgDeltaUs / 1_000.0
+            val fps = (1_000_000.0 / avgDeltaUs).coerceIn(1.0, 120.0)
+            val elapsedMs = (System.currentTimeMillis() - startedAt).coerceAtLeast(1L)
+
+            val result = SurfaceFrameExtractionResult(
+                sourceUri = uriString,
+                mimeType = mime,
+                codecName = codecName,
+                width = outputW,
+                height = outputH,
+                renderedFramesToSurface = renderedFrames,
+                surfaceAcquireCount = acquiredCount,
+                targetSurfaceValid = activeSurface.isValid,
+                averageFrameDeltaMs = avgDeltaMs,
+                estimatedFps = fps,
+                lastPresentationTimeUs = lastPtsUs,
+                processingDurationMs = elapsedMs
+            )
+            logger?.logInfo(
+                DiagnosticCategory.MEDIA_PIPELINE,
+                "MediaCodec extracted $renderedFrames frame(s) to Surface ($mime via $codecName)",
+                "${outputW}x${outputH}, acquired=$acquiredCount, ${String.format("%.1f", fps)} fps"
+            )
+            AppResult.Success(result)
+        } catch (t: Throwable) {
+            logger?.logError(
+                DiagnosticCategory.MEDIA_PIPELINE,
+                "MediaCodec video-to-Surface extraction failed",
+                t.message
+            )
+            AppResult.Failure(
+                AppError.MediaPlaybackError(
+                    message = t.message ?: "MediaCodec Surface extraction failed for selected video.",
+                    recoveryHint = "Select a standard H.264/HEVC MP4 video file."
+                )
+            )
+        } finally {
+            runCatching { codec?.stop() }
+            runCatching { codec?.release() }
+            runCatching { extractor?.release() }
+            runCatching { ownedReader?.close() }
+        }
+    }
 }
+
+data class SurfaceFrameExtractionResult(
+    val sourceUri: String,
+    val mimeType: String,
+    val codecName: String,
+    val width: Int,
+    val height: Int,
+    val renderedFramesToSurface: Int,
+    val surfaceAcquireCount: Int,
+    val targetSurfaceValid: Boolean,
+    val averageFrameDeltaMs: Double,
+    val estimatedFps: Double,
+    val lastPresentationTimeUs: Long,
+    val processingDurationMs: Long
+)
 
 enum class CameraAdapterLifecycle {
     IDLE,
@@ -646,6 +843,7 @@ data class VirtualCameraAdapterState(
     ),
     val lastPhotoResult: PhotoFramePipelineResult? = null,
     val lastVideoCodecResult: VideoCodecPipelineResult? = null,
+    val lastSurfaceExtractionResult: SurfaceFrameExtractionResult? = null,
     val lastProxyTestSummary: CameraProxyTestSummary? = null,
     val lastStatusNote: String = "Virtual camera adapter idle (physical camera isolated until explicitly enabled)."
 )
@@ -715,6 +913,27 @@ class VirtualCameraAdapterManager(
             }
             summary
         }
+
+    suspend fun runSurfaceFrameExtraction(
+        uriString: String,
+        targetSurface: Surface? = null,
+        maxSampleFrames: Int = 12
+    ): AppResult<SurfaceFrameExtractionResult> {
+        val result = videoCodecProcessor.extractVideoFramesToSurface(
+            uriString = uriString,
+            targetSurface = targetSurface,
+            maxSampleFrames = maxSampleFrames
+        )
+        if (result is AppResult.Success) {
+            _state.update {
+                it.copy(
+                    lastSurfaceExtractionResult = result.data,
+                    lastStatusNote = "Surface extraction: ${result.data.renderedFramesToSurface} frame(s) rendered (${result.data.width}x${result.data.height})"
+                )
+            }
+        }
+        return result
+    }
 
     suspend fun saveSharedConfig(config: SharedCameraSourceConfig): AppResult<Unit> = withContext(dispatchers.io) {
         runCatching {
