@@ -114,9 +114,11 @@ class VirtualCameraLaunchAndCaptureTest {
         )
         val processManager = ManagedVirtualProcessManager(context, database.virtualAppDao(), dispatchers)
 
-        val compatReport = checker.evaluatePackage(BuiltInVirtualApps.VIRTUAL_CAMERA_PACKAGE)
-        assertTrue(compatReport.isSupported)
-        assertEquals(ExecutionArchitecture.SUPPORTED_SANDBOX, compatReport.architecture)
+        val compatRes = checker.evaluatePackage(BuiltInVirtualApps.VIRTUAL_CAMERA_PACKAGE)
+        assertTrue(compatRes is AppResult.Success)
+        val compatReport = (compatRes as AppResult.Success).data
+        assertTrue(compatReport.isLaunchSupported)
+        assertEquals(ExecutionArchitecture.SUPPORTED_SANDBOX, compatReport.recommendedArchitecture)
 
         val launchableList = checker.queryInstalledLaunchableApps()
         assertTrue(launchableList.any { it.packageName == BuiltInVirtualApps.VIRTUAL_CAMERA_PACKAGE })
@@ -132,7 +134,7 @@ class VirtualCameraLaunchAndCaptureTest {
     }
 
     @Test
-    fun `home and virtual apps viewmodels route built-in camera directly and prompt before external camera apps`() = runTest {
+    fun `home and virtual apps viewmodels route built-in camera directly and prompt before external camera apps`() = kotlinx.coroutines.runBlocking {
         val prefs = FakeUserPreferencesRepository()
         val spaceRepo = RoomSpaceRepository(context, database.spaceDao(), database.virtualAppDao(), prefs, dispatchers)
         spaceRepo.ensureDefaultSpacesSeeded()
@@ -143,7 +145,7 @@ class VirtualCameraLaunchAndCaptureTest {
             context = context,
             configRepository = configRepo,
             photoProcessor = PhotoFrameProcessor(context, dispatchers, logger),
-            videoProcessor = VideoCodecFrameProcessor(context, dispatchers, logger),
+            videoCodecProcessor = VideoCodecFrameProcessor(context, dispatchers, logger),
             dispatchers = dispatchers,
             logger = logger
         )
@@ -166,14 +168,13 @@ class VirtualCameraLaunchAndCaptureTest {
             cameraAdapterManager = adapter
         )
         val collectorJob = launch { homeVm.uiState.collect() }
-        advanceUntilIdle()
 
         var openedVirtualCamSpace: String? = null
         val builtInApp = BuiltInVirtualApps.createVirtualCameraApp("space_1")
         homeVm.requestOpenApp(builtInApp) { spaceId, _ ->
             openedVirtualCamSpace = spaceId
         }
-        advanceUntilIdle()
+        testDispatcher.scheduler.advanceUntilIdle()
         assertEquals("space_1", openedVirtualCamSpace)
         assertNull(homeVm.uiState.value.pendingPreLaunchPrompt)
 
@@ -187,12 +188,17 @@ class VirtualCameraLaunchAndCaptureTest {
             status = VirtualAppStatus.READY
         )
         homeVm.requestOpenApp(cameraApp) { _, _ -> }
-        advanceUntilIdle()
+        kotlinx.coroutines.withTimeout(3_000L) {
+            while (homeVm.uiState.value.pendingPreLaunchPrompt == null) {
+                testDispatcher.scheduler.advanceUntilIdle()
+                kotlinx.coroutines.delay(25L)
+            }
+        }
         assertNotNull(homeVm.uiState.value.pendingPreLaunchPrompt)
         assertEquals(CameraSourceMode.LOCAL_VIDEO, homeVm.uiState.value.pendingPreLaunchPrompt?.activeMode)
 
         homeVm.dismissPreLaunchPrompt()
-        advanceUntilIdle()
+        testDispatcher.scheduler.advanceUntilIdle()
         assertNull(homeVm.uiState.value.pendingPreLaunchPrompt)
 
         val virtualAppsVm = VirtualAppsViewModel(
@@ -205,14 +211,18 @@ class VirtualCameraLaunchAndCaptureTest {
             cameraConfigRepository = configRepo
         )
         val vaJob = launch { virtualAppsVm.uiState.collect() }
-        advanceUntilIdle()
 
         virtualAppsVm.requestLaunchApp(cameraApp) { _, _ -> }
-        advanceUntilIdle()
+        kotlinx.coroutines.withTimeout(3_000L) {
+            while (virtualAppsVm.uiState.value.pendingPreLaunchPrompt == null) {
+                testDispatcher.scheduler.advanceUntilIdle()
+                kotlinx.coroutines.delay(25L)
+            }
+        }
         assertNotNull(virtualAppsVm.uiState.value.pendingPreLaunchPrompt)
 
         virtualAppsVm.dismissPreLaunchPrompt()
-        advanceUntilIdle()
+        testDispatcher.scheduler.advanceUntilIdle()
         assertNull(virtualAppsVm.uiState.value.pendingPreLaunchPrompt)
 
         collectorJob.cancel()

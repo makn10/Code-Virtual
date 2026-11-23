@@ -740,26 +740,6 @@ class AndroidVirtualAppInstaller(
                 return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
             }
 
-            if (compatibilityChecker.availableStorageBytes() < 10L * 1024L * 1024L) {
-                val msg = "Insufficient device storage (< 10 MB free)."
-                recordInstallEnd(installId, spaceId, packageName, "FAILED", msg, startedAt)
-                return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
-            }
-
-            val reportResult = compatibilityChecker.evaluatePackage(packageName)
-            if (reportResult is AppResult.Failure) {
-                recordInstallEnd(installId, spaceId, packageName, "FAILED", reportResult.error.message, startedAt)
-                return@withContext reportResult
-            }
-
-            val report = (reportResult as AppResult.Success).data
-            if (report.recommendedArchitecture == ExecutionArchitecture.UNSUPPORTED) {
-                val blocker = report.issues.firstOrNull { it.severity == CompatibilitySeverity.BLOCKER }
-                val msg = blocker?.detail ?: "Application is incompatible with this Android environment."
-                recordInstallEnd(installId, spaceId, packageName, "FAILED", msg, startedAt)
-                return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
-            }
-
             if (BuiltInVirtualApps.isBuiltInVirtualCamera(packageName)) {
                 storageManager.ensureSpaceDirectories(spaceId)
                 val builtInApp = BuiltInVirtualApps.createVirtualCameraApp(spaceId)
@@ -779,6 +759,26 @@ class AndroidVirtualAppInstaller(
                 )
                 recordInstallEnd(installId, spaceId, packageName, "COMPLETED", null, startedAt)
                 return@withContext AppResult.Success(builtInApp)
+            }
+
+            if (compatibilityChecker.availableStorageBytes() < 10L * 1024L * 1024L) {
+                val msg = "Insufficient device storage (< 10 MB free)."
+                recordInstallEnd(installId, spaceId, packageName, "FAILED", msg, startedAt)
+                return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
+            }
+
+            val reportResult = compatibilityChecker.evaluatePackage(packageName)
+            if (reportResult is AppResult.Failure) {
+                recordInstallEnd(installId, spaceId, packageName, "FAILED", reportResult.error.message, startedAt)
+                return@withContext reportResult
+            }
+
+            val report = (reportResult as AppResult.Success).data
+            if (report.recommendedArchitecture == ExecutionArchitecture.UNSUPPORTED) {
+                val blocker = report.issues.firstOrNull { it.severity == CompatibilitySeverity.BLOCKER }
+                val msg = blocker?.detail ?: "Application is incompatible with this Android environment."
+                recordInstallEnd(installId, spaceId, packageName, "FAILED", msg, startedAt)
+                return@withContext AppResult.Failure(AppError.InstallationFailed(msg))
             }
 
             val pm = context.packageManager
